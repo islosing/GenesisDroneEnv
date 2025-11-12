@@ -6,7 +6,7 @@ This repository contains example RL environment for Drones. This project has bee
 It's recommended to use a virtual environment, such as conda:
 
 ```bash
-conda create -n genesis_drone python=3.11 # Requires Python >= 3.10, <3.13
+conda create -n genesis_drone python=3.11 # Requires Python >= 3.10
 conda activate genesis_drone
 ```
 
@@ -17,49 +17,55 @@ git clone https://github.com/KafuuChikai/GenesisDroneEnv.git
 pip install -e .
 ```
 
+## Configs
+Paramters are not good enough, you can tune parameters as follows:
+- Controllers params in `config/*/flight.yaml`
+- Gnesis environment in `config/*/genesis_env.yaml`
+- RL config in `config/track_rl/rl_env.yaml`
+
 ## Demos
 
-### An tracking task
+### 1. An RL tracking task
 #### Evaluate the pretrained model
 ``` bash
 python scripts/eval/track_eval.py
 ```
+Then you will see:  
+<img src="docs/quick.gif" alt="FPV" width="90%"/>
+
 #### Use the provided training script to start training the policy.
 ``` bash
-python scripts/train/track_rsl.py 
+python scripts/train/track_train.py 
 ```
+**NOTE** Training converges around 200th step, reward scale in ```config/track_rl/rl_env.yaml``` need to be fine tuned
 
-### Use RC control FPV in Genesis
+### 2. Use RC control FPV in Genesis
 - Flash HEX file in `./utils/modified_BF_firmware/betaflight_4.4.0_STM32H743_forRC.hex` to your FCU (for STM32H743)
 - Use Type-c to power the FCU, and connect UART port (on FCU) and USB port (on PC) through USB2TTL module, like:
 - <img src="./docs/hardware.png"  width="300" /> <br>
 - Connect the FC and use mavlink to send FC_data from FCU to PC
-- Use `ls /dev/tty*` to check the port id and modified param `USB_path` in `./config/flight.yaml`
+- Use `ls /dev/tty*` to check the port id and modified param `USB_path` in `./config/*/flight.yaml`
 - Do this since the default mavlink frequence for rc_channle is too low
 - Connect the FC and use mavlink to send FC_data from FCU to PC
 - Use FC to control the sim drone by:
 ``` bash
 python scripts/eval/rc_FPV_eval.py.py
 ```
+<img src="docs/FPV.gif" alt="FPV" width="100%"/>
 
-### Position controller test
+### 3. Position controller test
 - Try to get the target with no planning, thus **has poor performance**
 ``` bash
-python scripts/pos_ctrl_eval.py
+python scripts/eval/pos_ctrl_eval.py
 ```
 
-If you enable the visualization, you will see:
-
-<img src="docs/training.gif" alt="training" width="70%"/>
-
-To monitor the training process, launch `TensorBoard`:
+To monitor the training process, you can use `TensorBoard`, reopen and terminal and activate the same conda env, then run:
 
 ```bash
 bash scripts/shell/launch_tb.bash
 ```
 
-
-By following this tutorial, you’ll be able to train and evaluate a basic drone hovering policy using Genesis. Have fun and enjoy!
+By following this tutorial, you’ll be able to train and evaluate a basic drone target tracking policy using Genesis. Have fun and enjoy!
 
 ## Acknowledgement
 

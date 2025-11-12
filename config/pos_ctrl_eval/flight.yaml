@@ -33,12 +33,12 @@ rat:
   kf_y: 0.0
 
 pos:
-  kp_x: 0.5
+  kp_x: 0.7
   ki_x: 0.001
   kd_x: 0.005
   kf_x: 0.0
 
-  kp_y: 0.5
+  kp_y: 0.7
   ki_y: 0.001
   kd_y: 0.005
   kf_y: 0.0

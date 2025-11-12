@@ -1,8 +1,8 @@
 import torch
 import yaml
 import genesis as gs
-from env.genesis_env import Genesis_env
-from algorithms.rl.tasks.track_task import Track_task
+from genesis_drones.env.genesis_env import Genesis_env
+from genesis_drones.tasks.track_task import Track_task
 from rsl_rl.runners import OnPolicyRunner
 
 def main():
@@ -10,13 +10,13 @@ def main():
     max_sim_step = 10000
 
 
-    with open("config/tasks/track_rl/genesis_env.yaml", "r") as file:
+    with open("config/track_rl/genesis_env.yaml", "r") as file:
         env_config = yaml.load(file, Loader=yaml.FullLoader)
 
-    with open("config/tasks/track_rl/rl_env.yaml", "r") as file:
+    with open("config/track_rl/rl_env.yaml", "r") as file:
         rl_config = yaml.load(file, Loader=yaml.FullLoader)
 
-    with open("config/tasks/track_rl/flight.yaml", "r") as file:
+    with open("config//track_rl/flight.yaml", "r") as file:
         flight_config = yaml.load(file, Loader=yaml.FullLoader)
 
     task_config = rl_config["task"]
@@ -38,7 +38,7 @@ def main():
     )
 
     runner = OnPolicyRunner(track_task, train_config, "", device="cuda:0")
-    runner.load("logs/track_rl/track_2025-10-15_09:39:32/model_8700.pt")
+    runner.load("logs/track_rl/track_2025-11-15_10:37:53/model_500.pt")
     policy = runner.get_inference_policy(device="cuda:0")
     obs = track_task.reset()    # tensordict
 

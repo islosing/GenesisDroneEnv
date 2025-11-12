@@ -26,7 +26,7 @@ def main():
     tensorboard --logdir="{log_dir}"
     """
 
-    bash_path = "scripts/launch_tb.bash"
+    bash_path = "scripts/shell/launch_tb.bash"
     with open(bash_path, "w") as f:
         f.write(bash_content)
 

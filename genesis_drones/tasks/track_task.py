@@ -49,10 +49,6 @@ class Track_task(VecEnv):
         self.last_pos_error = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.actions = torch.zeros((self.num_envs, self.num_actions), device=self.device, dtype=gs.tc_float)
         self.last_actions = torch.zeros_like(self.actions)
-        self.cur_vel_yaw_error = torch.zeros((self.num_envs,), device=self.device, dtype=gs.tc_float)
-        self.last_vel_yaw_error = torch.zeros_like(self.cur_vel_yaw_error)
-        self.cur_pos_yaw_error = torch.zeros((self.num_envs,), device=self.device, dtype=gs.tc_float)
-        self.last_pos_yaw_error = torch.zeros_like(self.cur_pos_yaw_error)
 
         # infos
         self.reward_functions = dict()
@@ -83,55 +79,38 @@ class Track_task(VecEnv):
 
 
     def _reward_target(self):
-        # mavrl
-        # reward_hor = torch.log(torch.norm(self.cur_pos_error[:, :2], dim=1) + 1)
-        # reward_vert = torch.abs(self.cur_pos_error[:, 2])
-        # target_reward = - reward_hor - reward_vert
 
-        target_reward = -torch.sum(torch.square(self.cur_pos_error), dim=1) * 0.05
+        target_reward = -torch.sum(torch.square(self.cur_pos_error), dim=1) * 0.1
         target_reward += torch.sum(torch.abs(self.last_pos_error) - torch.abs(self.cur_pos_error), dim=1)
 
         # target_reward = -torch.norm(self.cur_pos_error, dim=1) * 0.05
         # target_reward += torch.norm(self.last_pos_error, dim=1) - torch.norm(self.cur_pos_error, dim=1)
 
-        target_reward[self._at_target()] += 30
+        target_reward[self._at_target()] += 20
         return target_reward
 
     def _reward_smooth(self):
         smooth_reward_rpy = torch.norm(self.actions[:, :3] - self.last_actions[:, :3], dim=1)
         smooth_reward_thrust = torch.abs(self.actions[:, 3] - self.last_actions[:, 3]) * 5.0
         smooth_reward = smooth_reward_rpy + smooth_reward_thrust
-        # smooth_reward += torch.square(self.genesis_env.drone.odom.body_linear_acc[:, 2]) * 0.1
-        # smooth_reward = torch.norm(self.genesis_env.drone.odom.body_linear_acc - self.genesis_env.drone.odom.last_body_linear_acc, dim=1)
         return smooth_reward
     
     def _reward_vel(self):
         horizon_vel = torch.norm(self.genesis_env.drone.odom.world_linear_vel[:, :2], dim=1)
         vertical_vel = torch.abs(self.genesis_env.drone.odom.world_linear_vel[:, 2])
-        hor_reward = -(horizon_vel - self.max_horizon_vel > 0).float() * horizon_vel
-        ver_reward = -(vertical_vel - self.max_vertical_vel > 0).float() * vertical_vel * 3.0
+        hor_reward = -torch.relu(horizon_vel - self.max_horizon_vel)
+        ver_reward = -torch.relu(vertical_vel - self.max_vertical_vel)
         vel_reward = hor_reward + ver_reward
         return vel_reward
 
-    def _reward_yaw(self):
-        
-        # keep yaw = 0
-        # yaw = self.genesis_env.drone.odom.body_euler[:, 2]
-        # yaw_reward = torch.exp(self.task_config["yaw_lambda"] * torch.abs(yaw))
-
-        # keep yaw face target
-        abs_cur_error_v = torch.abs(self.cur_vel_yaw_error)
-        abs_last_error_v = torch.abs(self.last_vel_yaw_error)
-
-        yaw_reward = (torch.exp(-1 * abs_cur_error_v) - 0.35) * 2.0
-        yaw_reward += abs_last_error_v - abs_cur_error_v
-        return yaw_reward
-
     def _reward_angular(self):
-        # angular_reward = torch.sum(torch.abs(self.genesis_env.drone.odom.body_linear_acc[:, :2]), dim=1)
-        angular_reward = torch.sum(torch.abs(self.genesis_env.drone.odom.body_ang_acc[:, :2]), dim=1)
-        # angular_reward = torch.sum(torch.abs(self.genesis_env.drone.odom.world_ang_acc[:, :2] - self.genesis_env.drone.odom.last_world_ang_acc[:, :2]), dim=1)
+        angular_reward = torch.sum(torch.abs(self.genesis_env.drone.odom.body_ang_acc), dim=1)
         return angular_reward
+
+    def _reward_yaw(self):
+        yaw = self.genesis_env.drone.odom.body_euler[:, 2]
+        yaw_reward = torch.exp(self.task_config["yaw_lambda"] * torch.abs(yaw)) - 1
+        return yaw_reward
 
     def _reward_crash(self):
         crash_reward = torch.zeros((self.num_envs,), device=self.device, dtype=gs.tc_float)
@@ -177,16 +156,6 @@ class Track_task(VecEnv):
         # cal pos error
         self.last_pos_error[:] = self.command_buf - self.genesis_env.drone.odom.last_world_pos
         self.cur_pos_error[:] = self.command_buf - self.genesis_env.drone.odom.world_pos
-
-        # cal yaw error
-        self.last_vel_yaw_error[:] = self.cur_vel_yaw_error
-        self.last_pos_yaw_error[:] = self.cur_pos_yaw_error
-        cur_vel = self.genesis_env.drone.odom.world_linear_vel
-        cur_pos = self.command_buf - self.genesis_env.drone.odom.world_pos
-        self.cur_vel_yaw_error[:] = torch.atan2(cur_vel[:, 1], cur_vel[:, 0]) - self.genesis_env.drone.odom.body_euler[:, 2]
-        self.cur_pos_yaw_error[:] = torch.atan2(cur_pos[:, 1], cur_pos[:, 0]) - self.genesis_env.drone.odom.body_euler[:, 2]
-        
-        # self.cur_yaw_error[:] = (self.cur_yaw_error[:] + self.pi) % (2 * self.pi) - self.pi
         
         self.crash_condition_buf = (
             (torch.abs(self.genesis_env.drone.odom.body_euler[:, 1]) > self.task_config["termination_if_pitch_greater_than"])
@@ -211,7 +180,6 @@ class Track_task(VecEnv):
 
 
     def reset(self, env_idx=None):
-        # remember to reset all things!
         if env_idx is None:
             reset_range = torch.arange(self.num_envs, device=self.device)
         else:
@@ -242,11 +210,6 @@ class Track_task(VecEnv):
                 self.genesis_env.drone.odom.world_linear_vel,
                 self.genesis_env.drone.odom.body_ang_vel,
                 self.last_actions,
-                # torch.clip(self.cur_pos_yaw_error * self.obs_scales["ang"], -1, 1).unsqueeze(1),
-                # torch.clip(self.cur_pos_error * self.obs_scales["cur_pos_error"], -1, 1),
-                # torch.clip(self.genesis_env.drone.odom.world_linear_vel * self.obs_scales["lin_vel"], -1, 1),
-                # torch.clip(self.genesis_env.drone.odom.body_ang_vel * self.obs_scales["ang_vel"], -1, 1),
-                
             ],
             axis=-1,
         )

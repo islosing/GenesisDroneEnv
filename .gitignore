@@ -1,4 +1,4 @@
-logs/
+# logs/
 !logs/drone-demo/
 tmp/
 MUJOCO_LOG.TXT
@@ -117,7 +117,7 @@ celerybeat.pid
 # Environments
 # .env
 .venv
-env/
+# env/
 venv/
 ENV/
 env.bak/

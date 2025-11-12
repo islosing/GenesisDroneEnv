@@ -4,16 +4,12 @@ import shutil
 import os
 import yaml
 import torch
-from flight.pid import PIDcontroller
-from flight.odom import Odom
-from flight.mavlink_sim import rc_command
-from env.genesis_env import Genesis_env
-from flight.mavlink_sim import start_mavlink_receive_thread
-from algorithms.rl.tasks.track_task import Track_task
 import time
 from datetime import datetime
 import genesis as gs
 import warp as wp
+from env.genesis_env import Genesis_env
+from flight.mavlink_sim import start_mavlink_receive_thread
 
 def gs_rand_float(lower, upper, device="cuda"):
     shape = lower.shape  # scalar
@@ -31,14 +27,14 @@ def main():
             idx = torch.arange(num_envs, "cuda")
         else:
             idx = envs_idx
-        command_buf[idx, 0] = gs_rand_float(cur_pos[idx, 0]-0.2, cur_pos[idx, 0]+0.2)
-        command_buf[idx, 1] = gs_rand_float(cur_pos[idx, 1]-0.2, cur_pos[idx, 1]+0.2)
+        command_buf[idx, 0] = gs_rand_float(cur_pos[idx, 0]-0.5, cur_pos[idx, 0]+0.5)
+        command_buf[idx, 1] = gs_rand_float(cur_pos[idx, 1]-0.5, cur_pos[idx, 1]+0.5)
         command_buf[idx, 2] = gs_rand_float(torch.clamp(cur_pos[idx, 2]-0.2, min=0.3, max=2.0), cur_pos[idx, 2]+0.2)
 
     
     def at_target(cur_pos):
         cur_pos_error = cur_pos - command_buf[:, :3]
-        at_target = ((torch.norm(cur_pos_error, dim=1) < 0.2).nonzero(as_tuple=False).flatten())
+        at_target = ((torch.norm(cur_pos_error, dim=1) < 0.1).nonzero(as_tuple=False).flatten())
         return at_target
 
     with open("config/pos_ctrl_eval/genesis_env.yaml", "r") as file:

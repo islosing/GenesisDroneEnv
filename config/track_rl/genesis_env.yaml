@@ -1,6 +1,6 @@
 
 # ========= genesis =========
-num_envs: 8192     # num_envs must larger than num_mini_batches (default=4)! or mini_batch = 0!! 
+num_envs: 12000     # num_envs must larger than num_mini_batches (default=4)! or mini_batch = 0!! 
 drone_num: 1
 dt: 0.01
 max_vis_FPS: 30 
@@ -13,6 +13,7 @@ drone_init_pos: [0.0, 0.0, 0.4]          # Initial position of the drone
 vis_waypoints: True
 viewer_follow_drone: False
 show_cam_GUI: False
+fixed_init_pos: False
 # ======== depth cam params ========
 znear: 5.0 
 zfar: 0.1
