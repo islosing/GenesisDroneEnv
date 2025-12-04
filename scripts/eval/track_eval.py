@@ -38,7 +38,7 @@ def main():
     )
 
     runner = OnPolicyRunner(track_task, train_config, "", device="cuda:0")
-    runner.load("logs/track_rl/track_2025-11-15_10:37:53/model_500.pt")
+    runner.load("logs/track_rl/policy_demo/model_500.pt")
     policy = runner.get_inference_policy(device="cuda:0")
     obs = track_task.reset()    # tensordict
 
