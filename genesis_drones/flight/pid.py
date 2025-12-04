@@ -5,7 +5,7 @@ import genesis as gs
 
 import math
 from genesis.utils.geom import quat_to_R
-from flight.odom import ve2vb
+from genesis_drones.flight.odom import ve2vb
 
 class PIDcontroller:
     def __init__(
@@ -108,6 +108,7 @@ class PIDcontroller:
         else:
             throttle_action = torch.clamp(action[:, -1] * 3 + self.thrust_compensate, min=0.0, max=3.0) * self.base_rpm
             throttle = throttle_rc + throttle_action
+            throttle = throttle/(3* self.base_rpm)
 
         # self.pid_output[:] = torch.clip(self.pid_output[:], -3.0, 3.0)
         motor_outputs = torch.stack([
@@ -116,8 +117,9 @@ class PIDcontroller:
            throttle + self.pid_output[:, 0] + self.pid_output[:, 1] - self.pid_output[:, 2],  # M3
            throttle + self.pid_output[:, 0] - self.pid_output[:, 1] + self.pid_output[:, 2],  # M4
         ], dim = 1)
-
-        return torch.clamp(motor_outputs, min=1, max=self.base_rpm * 3.5)  # size: tensor(num_envs, 4)
+        print(motor_outputs)
+        motor_outputs = motor_outputs * self.base_rpm*3
+        return torch.clamp(motor_outputs, min=self.base_rpm * 0.6, max=self.base_rpm * 3.5)  # size: tensor(num_envs, 4)
 
     def pid_update_TpaFactor(self):
         if (self.rc_command[3] > 0.35):       # 0.35 is the tpa_breakpoint, the same as Betaflight, 
@@ -161,7 +163,7 @@ class PIDcontroller:
         if action is None:
             self.body_set_point[:] = self.rc_command[:3] * 15   # max 15 rad/s
         else:
-            self.body_set_point[:] = action[:, :3] * 1
+            self.body_set_point[:] = action[:, :3] * 10
 
         self.last_setpoint_error[:] = self.cur_setpoint_error
         self.cur_setpoint_error[:] = self.body_set_point - self.odom.body_ang_vel
@@ -183,7 +185,8 @@ class PIDcontroller:
             self.body_set_point[:] = -self.odom.body_euler * yaw_mask + self.rc_command[:3]  
         else:               # in RL mode
             self.body_set_point[:] = -self.odom.body_euler * yaw_mask + action[:, :3]  # action is in rad, like [[roll, pitch, yaw, thrust]] if num_envs = 1
-
+            # print(action[:, :3])
+            # print(self.odom.body_euler)
         self.last_setpoint_error[:] = self.cur_setpoint_error
         self.cur_setpoint_error[:] = (self.body_set_point * 15 - self.odom.body_ang_vel)
         self.P_term_a[:] = (self.cur_setpoint_error[:] * self.kp_a) * self.tpa_factor
