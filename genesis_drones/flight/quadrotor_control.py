@@ -5,8 +5,9 @@ from scipy.spatial.transform import Rotation
 
 class SE3Control(object):
     """
-    Quadrotor trajectory tracking controller upgraded to Hopf Fibration
-    Control (HFCA) instead of classical Gram–Schmidt geometric control.
+    Quadrotor trajectory tracking controller based on https://ieeexplore.ieee.org/document/5717652 
+    with Hopf Fibration based attitude control from Control of Quadrotors Using the Hopf Fibration on SO(3)
+    
     """
 
     def __init__(self, quad_params):
