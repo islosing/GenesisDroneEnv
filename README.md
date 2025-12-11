@@ -72,8 +72,7 @@ By following this tutorial, you’ll be able to train and evaluate a basic drone
 
 ```bash
 python scripts/eval/controller_eval.py
-
-
+```
 ## Acknowledgement
 
 This repository is inspired by the following work:
