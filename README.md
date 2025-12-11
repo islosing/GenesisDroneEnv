@@ -67,6 +67,13 @@ bash scripts/shell/launch_tb.bash
 
 By following this tutorial, you’ll be able to train and evaluate a basic drone target tracking policy using Genesis. Have fun and enjoy!
 
+### 4. SO(3) controller test
+- Here we replace the high-level RL policy with a geometric **SO(3) controller**, and directly track the target using a classical controller.
+
+```bash
+python scripts/eval/controller_eval.py
+
+
 ## Acknowledgement
 
 This repository is inspired by the following work:
