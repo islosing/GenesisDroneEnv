@@ -110,24 +110,16 @@ class PIDcontroller:
         if action is None:
             throttle = throttle_rc
         else:
-            throttle_action = torch.clamp(action[:, -1] * 3 + self.thrust_compensate, min=0.0, max=3.0) * self.base_rpm
-            throttle = throttle_rc + throttle_action
             throttle_cmd = torch.clamp(action[:, -1], min=-1, max=1.0)
             throttle = throttle_cmd * 0.5 + 0.5
             throttle = torch.sqrt(throttle_cmd * 0.5 + 0.5)
-            print(throttle)
-        #throttle = torch.clamp(action[:, -1], min=0.0, max=1.0)
-        # self.pid_output[:] = torch.clip(self.pid_output[:], -3.0, 3.0)
         motor_outputs = torch.stack([
            throttle - self.pid_output[:, 0] - self.pid_output[:, 1] - self.pid_output[:, 2],  # M1
            throttle - self.pid_output[:, 0] + self.pid_output[:, 1] + self.pid_output[:, 2],  # M2
            throttle + self.pid_output[:, 0] + self.pid_output[:, 1] - self.pid_output[:, 2],  # M3
            throttle + self.pid_output[:, 0] - self.pid_output[:, 1] + self.pid_output[:, 2],  # M4
         ], dim = 1)
-        # print(torch.clamp(motor_outputs, min=0, max=1))
-        #return torch.clamp(motor_outputs, min=self.base_rpm*0.3, max=self.base_rpm * 3.5)  # size: tensor(num_envs, 4)
-        final_rpm = torch.clamp(motor_outputs*140000, min=0, max=140000)
-        print(final_rpm)
+        final_rpm = torch.clamp(motor_outputs*2.25*self.base_rpm, min=0, max=2.25*self.base_rpm)
         return torch.nan_to_num(final_rpm, nan=0.0)
     
     def pid_update_TpaFactor(self):
