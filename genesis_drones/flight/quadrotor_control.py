@@ -6,11 +6,13 @@ from scipy.spatial.transform import Rotation
 
 class SE3Control(object):
     """
-    Quadrotor trajectory tracking controller based on https://ieeexplore.ieee.org/document/5717652 
-    with Hopf Fibration based attitude control from Control of Quadrotors Using the Hopf Fibration on SO(3)
-    
-    """
+    Quadrotor trajectory tracking controller based on https://ieeexplore.ieee.org/document/5717652
+    with Hopf Fibration based attitude control from
+    'Control of Quadrotors Using the Hopf Fibration on SO(3)'
 
+    Fix: handle c -> -1 singularity by flipping the S^2 chart (force c >= 0),
+         compute Hopf quantities in the stable chart, then flip back R_des and ω_des.
+    """
 
     def __init__(self, yaml_path: str):
 
@@ -88,29 +90,122 @@ class SE3Control(object):
     # ------------------------
     @staticmethod
     def quat_mul(q1, q2):
-        w1,x1,y1,z1 = q1
-        w2,x2,y2,z2 = q2
+        """Quaternion multiply (Hamilton product), q = q1 ⊗ q2.
+        Quaternions are [w,x,y,z].
+        """
+        w1, x1, y1, z1 = q1
+        w2, x2, y2, z2 = q2
         return np.array([
             w1*w2 - x1*x2 - y1*y2 - z1*z2,
             w1*x2 + x1*w2 + y1*z2 - z1*y2,
             w1*y2 - x1*z2 + y1*w2 + z1*x2,
             w1*z2 + x1*y2 - y1*x2 + z1*w2
-        ])
+        ], dtype=float)
 
     @staticmethod
-    def normalize(v):
+    def normalize(v, eps=1e-9):
         n = np.linalg.norm(v)
-        if n < 1e-9: return v
+        if n < eps:
+            return v
         return v / n
 
     @staticmethod
     def vee(S):
-        return np.array([-S[1,2], S[0,2], -S[0,1]])
+        """vee-map for so(3) -> R^3 for skew-symmetric matrix S."""
+        return np.array([-S[1, 2], S[0, 2], -S[0, 1]], dtype=float)
+
+    @staticmethod
+    def _safe_hopf_attitude_and_omega(zeta, zeta_dot, yaw, yaw_dot, eps=1e-6):
+        """
+        Compute R_des and w_des from Hopf fibration formulas robustly near c=-1 by:
+        - Build s = zeta/||zeta|| (desired b3)
+        - If c < 0, flip s and s_dot to make c >= 0 (stable chart)
+        - Compute Hopf tilt quaternion q_abc, then apply yaw quaternion q_psi
+        - Compute omega via HFCA closed-form
+        - If flipped, flip back R_des (columns 0 and 2) and w_des (x and z)
+        """
+        zeta_norm = np.linalg.norm(zeta)
+        if zeta_norm < eps:
+            # caller should handle fallback; return None to indicate failure
+            return None, None
+
+        # s on S^2
+        s = zeta / zeta_norm
+        a, b, c = s
+
+        # s_dot via normalization derivative: s_dot = (I - s s^T) zeta_dot / ||zeta||
+        # Your original P-form is equivalent.
+        I3 = np.eye(3)
+        P = (zeta_norm**2 * I3 - np.outer(zeta, zeta)) / (zeta_norm**3 + 1e-12)
+        s_dot = P @ zeta_dot
+        a_dot, b_dot, c_dot = s_dot
+
+        # ---- flip chart if in south hemisphere (c < 0) ----
+        flip = 1.0
+        if c < 0.0:
+            flip = -1.0
+            a, b, c = -a, -b, -c
+            a_dot, b_dot, c_dot = -a_dot, -b_dot, -c_dot
+
+        # ---- Hopf tilt quaternion q_abc (stable since c >= 0 => 1+c >= 1) ----
+        denom = np.sqrt(max(2.0 * (1.0 + c), eps))
+        q_abc = np.array([
+            (1.0 + c) / denom,
+            -b / denom,
+            a / denom,
+            0.0
+        ], dtype=float)  # [w,x,y,z]
+
+        # yaw quaternion q_psi about +z
+        half = 0.5 * yaw
+        q_psi = np.array([np.cos(half), 0.0, 0.0, np.sin(half)], dtype=float)
+
+        # total quaternion
+        q_tot = SE3Control.quat_mul(q_abc, q_psi)  # [w,x,y,z]
+
+        # scipy wants [x,y,z,w]
+        q_scipy = np.array([q_tot[1], q_tot[2], q_tot[3], q_tot[0]], dtype=float)
+        R_des = Rotation.from_quat(q_scipy).as_matrix()
+
+        # ---- omega formulas (stable since one_plus_c >= 1) ----
+        one_plus_c = max(1.0 + c, eps)
+        sinp = np.sin(yaw)
+        cosp = np.cos(yaw)
+
+        omega1 = (sinp * a_dot - cosp * b_dot
+                  - (a * sinp - b * cosp) * (c_dot / one_plus_c))
+        omega2 = (cosp * a_dot + sinp * b_dot
+                  - (a * cosp + b * sinp) * (c_dot / one_plus_c))
+        omega3 = ((b * a_dot - a * b_dot) / one_plus_c + yaw_dot)
+
+        w_des = np.array([omega1, omega2, omega3], dtype=float)
+
+        # ---- flip back to recover original (unflipped) b3_des = zeta/||zeta|| ----
+        if flip < 0.0:
+            # keep det +1 by flipping first and third columns
+            R_des[:, 0] *= -1.0
+            R_des[:, 2] *= -1.0
+            # flip omega_x and omega_z like your torch reference
+            w_des[0] *= -1.0
+            w_des[2] *= -1.0
+
+        return R_des, w_des
 
     # ============================================================
     #                       MAIN UPDATE()
     # ============================================================
     def update(self, t, state, flat):
+        """
+        state:
+            x: position (3,)
+            v: velocity (3,)
+            q: quaternion in scipy format [x,y,z,w]
+            w: body rates (3,) in body frame
+
+        flat:
+            x, x_dot, x_ddot, x_dddot: (3,)
+            yaw, yaw_dot: scalars
+        """
 
         # --------------------
         # 1. DESIRED ACC ζ
@@ -118,117 +213,80 @@ class SE3Control(object):
         pos_err = state['x'] - flat['x']
         vel_err = state['v'] - flat['x_dot']
 
-        zeta = (- self.kp_pos * pos_err
-                - self.kd_pos * vel_err
+        zeta = (-self.kp_pos * pos_err
+                -self.kd_pos * vel_err
                 + flat['x_ddot']
-                + np.array([0,0,self.g]))
+                + np.array([0.0, 0.0, self.g]))
 
         F_des = self.mass * zeta
 
         # Current attitude
         R = Rotation.from_quat(state['q']).as_matrix()
-        b3 = R @ np.array([0,0,1])
+        b3 = R @ np.array([0.0, 0.0, 1.0])
 
-        # Scalar thrust (same as original SE3 controller)
-        u1 = np.dot(F_des, b3)
+        # Scalar thrust
+        u1 = float(np.dot(F_des, b3))
 
         # ---------------------------
-        # 2. HOPF FIBRATION ATTITUDE
+        # 2. DESIRED ATTITUDE (Hopf, robust near c=-1)
         # ---------------------------
         eps = 1e-6
         zeta_norm = np.linalg.norm(zeta)
 
         if zeta_norm < eps:
-            # fallback to classic SE3 control
-            b3_des = np.array([0,0,1])
-            yaw = flat['yaw']
-            c1 = np.array([np.cos(yaw), np.sin(yaw), 0])
+            # fallback to classic SE3 direction + yaw
+            b3_des = np.array([0.0, 0.0, 1.0])
+            yaw = float(flat['yaw'])
+            c1 = np.array([np.cos(yaw), np.sin(yaw), 0.0])
             b2 = self.normalize(np.cross(b3_des, c1))
             b1 = np.cross(b2, b3_des)
-            R_des = np.stack([b1, b2, b3_des]).T
-            w_des = np.array([0,0, flat['yaw_dot']])
-
+            R_des = np.stack([b1, b2, b3_des], axis=1)
+            w_des = np.array([0.0, 0.0, float(flat['yaw_dot'])], dtype=float)
         else:
-
-            # S^2 PART: thrust direction
-            s = zeta / zeta_norm
-            a, b, c = s
-
-            # s_dot via normalization derivative
-            zeta_dot = flat['x_dddot']
-            I3 = np.eye(3)
-            P = (zeta_norm**2 * I3 - np.outer(zeta, zeta)) / (zeta_norm**3)
-            s_dot = P @ zeta_dot
-            a_dot, b_dot, c_dot = s_dot
-
-            # --- HOPF QUATERNION q_abc ---
-            denom = np.sqrt(2*(1+c))
-            if denom < eps: denom = eps
-
-            q_abc = np.array([
-                (1+c)/denom,
-                -b/denom,
-                a/denom,
-                0.0
-            ])  # [w,x,y,z]
-
-            # --- YAW QUATERNION q_ψ ---
-            psi = flat['yaw']
-            psi_dot = flat['yaw_dot']
-            half = 0.5 * psi
-            q_psi = np.array([np.cos(half), 0, 0, np.sin(half)])
-
-            # total quaternion
-            q_tot = self.quat_mul(q_abc, q_psi)
-
-            # convert to scipy format [x,y,z,w]
-            q_scipy = np.array([q_tot[1], q_tot[2], q_tot[3], q_tot[0]])
-            R_des = Rotation.from_quat(q_scipy).as_matrix()
-
-            # =========================
-            # 3. HFCA ω_des FORMULAS
-            # =========================
-            one_plus_c = max(1+c, eps)
-            sinp = np.sin(psi)
-            cosp = np.cos(psi)
-
-            omega1 = ( sinp*a_dot - cosp*b_dot
-                      - (a*sinp - b*cosp)*(c_dot/one_plus_c) )
-
-            omega2 = ( cosp*a_dot + sinp*b_dot
-                      - (a*cosp + b*sinp)*(c_dot/one_plus_c) )
-
-            omega3 = ( (b*a_dot - a*b_dot)/one_plus_c + psi_dot )
-
-            w_des = np.array([omega1, omega2, omega3])
+            R_des, w_des = self._safe_hopf_attitude_and_omega(
+                zeta=zeta,
+                zeta_dot=flat['x_dddot'],
+                yaw=float(flat['yaw']),
+                yaw_dot=float(flat['yaw_dot']),
+                eps=1e-6
+            )
+            # ultra-safe fallback (should not happen)
+            if R_des is None or w_des is None:
+                b3_des = zeta / zeta_norm
+                yaw = float(flat['yaw'])
+                c1 = np.array([np.cos(yaw), np.sin(yaw), 0.0])
+                b2 = self.normalize(np.cross(b3_des, c1))
+                b1 = np.cross(b2, b3_des)
+                R_des = np.stack([b1, b2, b3_des], axis=1)
+                w_des = np.array([0.0, 0.0, float(flat['yaw_dot'])], dtype=float)
 
         # -----------------------
-        # 4. ATTITUDE PD CONTROL
+        # 3. ATTITUDE PD CONTROL
         # -----------------------
-        S_err = 0.5*(R_des.T@R - R.T@R_des)
+        S_err = 0.5 * (R_des.T @ R - R.T @ R_des)
         att_err = self.vee(S_err)
-        w_err  = state['w'] - w_des
+        w_err = state['w'] - w_des
 
-        u2 = ( self.inertia @ (-self.kp_att * att_err - self.kd_att * w_err)
-               + np.cross(state['w'], self.inertia @ state['w']) )
+        u2 = (self.inertia @ (-self.kp_att * att_err - self.kd_att * w_err)
+              + np.cross(state['w'], self.inertia @ state['w']))
 
         # body-rate command (optional)
-        cmd_w = -self.kp_att*att_err - self.kd_att*w_err
+        cmd_w = -self.kp_att * att_err - self.kd_att * w_err
 
         # -----------------------
-        # 5. MOTOR ALLOCATION
+        # 4. MOTOR ALLOCATION
         # -----------------------
-        TM = np.array([u1, u2[0], u2[1], u2[2]])
+        TM = np.array([u1, u2[0], u2[1], u2[2]], dtype=float)
         rotor_thrusts = self.TM_to_f @ TM
 
         motor_speeds = rotor_thrusts / self.k_eta
-        motor_speeds = np.sign(motor_speeds)*np.sqrt(np.abs(motor_speeds))
+        motor_speeds = np.sign(motor_speeds) * np.sqrt(np.abs(motor_speeds))
 
         # -----------------------
         # OUTPUTS
         # -----------------------
-        cmd_q = Rotation.from_matrix(R_des).as_quat()
-        #print("cmd_q:", cmd_q)
+        cmd_q = Rotation.from_matrix(R_des).as_quat()  # scipy format [x,y,z,w]
+
         return {
             'cmd_motor_speeds': motor_speeds,
             'cmd_motor_thrusts': rotor_thrusts,
@@ -236,10 +294,10 @@ class SE3Control(object):
             'cmd_moment': u2,
             'cmd_q': cmd_q,
             'cmd_w': cmd_w,
-            'cmd_v': -self.kp_vel*pos_err + flat['x_dot'],
-            'cmd_acc': F_des/self.mass
+            'cmd_v': -self.kp_vel * pos_err + flat['x_dot'],
+            'cmd_acc': F_des / self.mass
         }
-    
+       
 class BatchedSE3Control(object):
     def __init__(self, batch_params, num_drones, device, kp_pos=None, kd_pos=None, kp_att=None, kd_att=None):
         '''
