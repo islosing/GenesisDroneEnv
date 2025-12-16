@@ -179,15 +179,16 @@ class PIDcontroller:
         :param: 
             action: torch.Size([num_envs, 4]), like [[roll, pitch, yaw, thrust]] if num_envs = 1
         """
-        yaw_mask = torch.tensor([1,1,0], device=self.device)
+        yaw_mask = torch.tensor([1,1,1], device=self.device)
         if action is None:  # in RC mode
             self.body_set_point[:] = -self.odom.body_euler * yaw_mask + self.rc_command[:3]  
         else:               # in RL mode
             self.body_set_point[:] = -self.odom.body_euler * yaw_mask + action[:, :3]  # action is in rad, like [[roll, pitch, yaw, thrust]] if num_envs = 1
+        print( self.odom.body_euler)
         self.cur_setpoint_error[:] = (self.body_set_point * 15 - self.odom.body_ang_vel)
         self.P_term_a[:] = (self.cur_setpoint_error[:] * self.kp_a) * self.tpa_factor
-        self.I_term_a[:] = torch.clamp(self.I_term_a + self.cur_setpoint_error[:] * self.ki_a, -0.5, 0.5)
-        self.D_term_a[:] = torch.clamp((self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_a * self.tpa_factor, -0.5, 0.5)    
+        self.I_term_a[:] = torch.clamp(self.I_term_a + self.cur_setpoint_error[:] * self.ki_a*self.dt, -0.5, 0.5)
+        self.D_term_a[:] = torch.clamp((self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_a * self.tpa_factor/self.dt, -0.5, 0.5)    
         
         self.pid_output[:] = (self.P_term_a + self.I_term_a + self.D_term_a)
         self.last_body_ang_vel[:] = self.odom.body_ang_vel

@@ -297,6 +297,66 @@ class SE3Control(object):
             'cmd_v': -self.kp_vel * pos_err + flat['x_dot'],
             'cmd_acc': F_des / self.mass
         }
+    
+    def ctbr_action(
+        self,
+        control,
+        config,
+        device,
+    ):
+        """
+        normlize the ctrl output to action space
+        """
+        # -------- thrust normlize --------
+        min_t = config["min_t"]
+        max_t = config["max_t"]
+
+        thrust_norm = (control["cmd_thrust"] - min_t) / (max_t - min_t)
+        thrust_norm = thrust_norm * 2.0 - 1.0
+
+        # -------- rate normlize --------
+        wx, wy, wz = control["cmd_w"]
+
+        roll_norm  = wx / config["max_roll_rate"]
+        pitch_norm = wy / config["max_pitch_rate"]
+        yaw_norm   = wz / config["max_yaw_rate"]
+
+        roll_norm  = np.clip(roll_norm,  -1.0, 1.0)
+        pitch_norm = np.clip(pitch_norm, -1.0, 1.0)
+        yaw_norm   = np.clip(yaw_norm,   -1.0, 1.0)
+
+        # -------- action --------
+        action = np.array(
+            [roll_norm, pitch_norm, yaw_norm, thrust_norm],
+            dtype=np.float32
+        ).reshape(1, -1)
+
+        action_tensor = torch.from_numpy(action).to(device)
+
+        return action_tensor
+
+    def ctatt_action(
+        self,
+        control,
+        config,
+        device,
+    ):
+        """
+        normlize the ctrl output to action space
+        """
+        # -------- thrust normlize --------
+        min_t = config["min_t"]
+        max_t = config["max_t"]
+
+        thrust_norm = (control["cmd_thrust"] - min_t) / (max_t - min_t)
+        thrust_norm = thrust_norm * 2.0 - 1.0
+
+        # -------- angle normlize --------
+        eulers = Rotation.from_quat(control["cmd_q"]).as_euler("xyz")
+        action_anger=np.hstack([eulers, thrust_norm]).reshape(1, -1)
+        action_tensor_anger = torch.from_numpy(action_anger).to(device).float()
+
+        return action_tensor_anger
        
 class BatchedSE3Control(object):
     def __init__(self, batch_params, num_drones, device, kp_pos=None, kd_pos=None, kp_att=None, kd_att=None):

@@ -62,24 +62,13 @@ def main():
             "yaw_dot": 0.0
             }
             ctrl = controller.update(0, state, flat)
-            min_t = flight_config["min_t"]  
-            max_t = flight_config["max_t"]
-            thrust_norm = (ctrl["cmd_thrust"] - min_t) / ((max_t - min_t))
-            thrust_norm = thrust_norm * 2 - 1
-            wx, wy, wz = ctrl["cmd_w"]  
-            roll_norm  = wx / flight_config["max_roll_rate"]
-            pitch_norm = wy / flight_config["max_pitch_rate"]
-            yaw_norm   = wz / flight_config["max_yaw_rate"]
-            roll_norm  = np.clip(roll_norm,  -1.0, 1.0)
-            pitch_norm = np.clip(pitch_norm, -1.0, 1.0)
-            yaw_norm   = np.clip(yaw_norm,   -1.0, 1.0)
-            # # -------------------------
-            # #  step env
-            # # -------------------------
-            action = np.hstack([roll_norm, pitch_norm, yaw_norm,thrust_norm ]).reshape(1, -1)
-            action_tensor = torch.from_numpy(action).to(device).float()
+            action = controller.ctatt_action(
+                control=ctrl,
+                config=flight_config,
+                device=device,
+            )
 
-            obs, rews, dones, infos = track_task.step(action_tensor)
+            obs, rews, dones, infos = track_task.step(action)
 
 if __name__ == "__main__" :
     main()
