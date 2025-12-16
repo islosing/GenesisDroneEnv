@@ -40,7 +40,7 @@ def main():
         train_config = train_config,
         num_envs=1,
     )
-    controller = SE3Control(quad_params)
+    controller = SE3Control("config/controller_track/minco_params.yaml")
     obs = track_task.reset()    # tensordict
 
     with torch.no_grad():
@@ -63,19 +63,19 @@ def main():
             "yaw_dot": 0.0
             }
             ctrl = controller.update(0, state, flat)
-            min_t = 0  
-            max_t =25
+            min_t = flight_config["min_t"]  
+            max_t = flight_config["max_t"]
             thrust_norm = (ctrl["cmd_thrust"] - min_t) / ((max_t - min_t))
             thrust_norm = thrust_norm * 2 - 1
-            wx, wy, wz = ctrl["cmd_w"]   # 期望机体系角速度，单位 rad/s
-            roll_norm  = wx / 10
-            pitch_norm = wy / 10
-            yaw_norm   = wz / 7
+            wx, wy, wz = ctrl["cmd_w"]  
+            roll_norm  = wx / flight_config["max_roll_rate"]
+            pitch_norm = wy / flight_config["max_pitch_rate"]
+            yaw_norm   = wz / flight_config["max_yaw_rate"]
             roll_norm  = np.clip(roll_norm,  -1.0, 1.0)
             pitch_norm = np.clip(pitch_norm, -1.0, 1.0)
             yaw_norm   = np.clip(yaw_norm,   -1.0, 1.0)
             # # -------------------------
-            # # 3. 拼成 action 向量
+            # # 3. 拼成 action
             # # -------------------------
             action = np.hstack([roll_norm, pitch_norm, yaw_norm,thrust_norm ]).reshape(1, -1)
             action_tensor = torch.from_numpy(action).to(device).float()

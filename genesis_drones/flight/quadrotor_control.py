@@ -1,7 +1,10 @@
 import numpy as np
 import torch
 import roma
+import yaml
 from scipy.spatial.transform import Rotation
+# 写一个读参数的方法，取代minco_params.py, controller读取，标准化（llm）
+
 
 class SE3Control(object):
     """
@@ -10,15 +13,22 @@ class SE3Control(object):
     
     """
 
-    def __init__(self, quad_params):
 
-        self.mass = quad_params['mass']
-        self.Ixx  = quad_params['Ixx']
-        self.Iyy  = quad_params['Iyy']
-        self.Izz  = quad_params['Izz']
-        self.Ixy  = quad_params['Ixy']
-        self.Ixz  = quad_params['Ixz']
-        self.Iyz  = quad_params['Iyz']
+    def __init__(self, yaml_path: str):
+
+        with open(yaml_path, "r") as file:
+            cfg = yaml.load(file, Loader=yaml.FullLoader)
+
+        # =====================
+        # Inertia
+        # =====================
+        self.mass = cfg["inertia"]["mass"]
+        self.Ixx  = cfg["inertia"]["Ixx"]
+        self.Iyy  = cfg["inertia"]["Iyy"]
+        self.Izz  = cfg["inertia"]["Izz"]
+        self.Ixy  = cfg["inertia"]["Ixy"]
+        self.Ixz  = cfg["inertia"]["Ixz"]
+        self.Iyz  = cfg["inertia"]["Iyz"]
 
         self.inertia = np.array([
             [self.Ixx, self.Ixy, self.Ixz],
@@ -28,28 +38,51 @@ class SE3Control(object):
 
         self.g = 9.81
 
+        # =====================
         # Gains
-        self.kp_pos = np.array([12, 12, 12])
-        self.kd_pos = np.array([4, 4, 7])
+        # =====================
+        self.kp_pos = np.array([16, 16, 16])
+        self.kd_pos = np.array([5, 5, 7])
         self.kp_att = 20.44
         self.kd_att = 0.1
         self.kp_vel = 0.1 * self.kp_pos
 
-        # Rotor/motor parameters
-        self.num_rotors      = quad_params['num_rotors']
-        self.rotor_pos       = quad_params['rotor_pos']
-        self.rotor_dir       = quad_params['rotor_directions']
-        self.k_eta           = quad_params['k_eta']
-        self.k_m             = quad_params['k_m']
+        # =====================
+        # Rotor geometry
+        # =====================
+        d = cfg["arm_length"]
 
-        k = self.k_m/self.k_eta
+        self.num_rotors = cfg["geometry"]["num_rotors"]
+
+        self.rotor_pos = {
+            k: d * np.array(v, dtype=float)
+            for k, v in cfg["geometry"]["rotor_pos"].items()
+        }
+
+        self.rotor_dir = np.array(
+            cfg["geometry"]["rotor_directions"], dtype=float
+        )
+
+        # =====================
+        # Rotor / motor parameters
+        # =====================
+        self.k_eta = cfg["rotor"]["k_eta"]
+        self.k_m   = cfg["rotor"]["k_m"]
+
+        # =====================
+        # Allocation matrix
+        # =====================
+        k = self.k_m / self.k_eta
+
         self.f_to_TM = np.vstack((
             np.ones((1, self.num_rotors)),
-            np.hstack([np.cross(self.rotor_pos[key],
-                        np.array([0,0,1]))[:2].reshape(-1,1)
-                        for key in self.rotor_pos]),
-            (k * self.rotor_dir).reshape(1,-1)
+            np.hstack([
+                np.cross(self.rotor_pos[key], np.array([0, 0, 1]))[:2].reshape(-1, 1)
+                for key in self.rotor_pos
+            ]),
+            (k * self.rotor_dir).reshape(1, -1)
         ))
+
         self.TM_to_f = np.linalg.inv(self.f_to_TM)
 
     # ------------------------

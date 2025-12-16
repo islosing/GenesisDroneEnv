@@ -81,6 +81,7 @@ class PIDcontroller:
         
         self.pid_freq = config.get("pid_exec_freq", 60)     # no use
         self.base_rpm = config.get("base_rpm", 14468.429183500699)
+        self.TWR = config.get("TWR", 3.3)
         self.dT = 1 / self.pid_freq                         # no use
         self.tpa_factor = 1
         self.tpa_rate = 0
@@ -104,23 +105,21 @@ class PIDcontroller:
 
 
     def mixer(self, action=None) -> torch.Tensor:
-
-
         throttle_rc = torch.clamp((self.rc_command[3] + self.throttle_command) * 3, 0.0, 3.0) * self.base_rpm
         if action is None:
             throttle = throttle_rc
         else:
-            throttle_cmd = torch.clamp(action[:, -1], min=-1, max=1.0)
-            throttle = throttle_cmd * 0.5 + 0.5
-            throttle = torch.sqrt(throttle_cmd * 0.5 + 0.5)
+            throttle_action = torch.clamp(action[:, -1], min=-1, max=1.0)
+            throttle = (throttle_action + 1) / 2
         motor_outputs = torch.stack([
            throttle - self.pid_output[:, 0] - self.pid_output[:, 1] - self.pid_output[:, 2],  # M1
            throttle - self.pid_output[:, 0] + self.pid_output[:, 1] + self.pid_output[:, 2],  # M2
            throttle + self.pid_output[:, 0] + self.pid_output[:, 1] - self.pid_output[:, 2],  # M3
            throttle + self.pid_output[:, 0] - self.pid_output[:, 1] + self.pid_output[:, 2],  # M4
         ], dim = 1)
-        final_rpm = torch.clamp(motor_outputs*2.25*self.base_rpm, min=0, max=2.25*self.base_rpm)
-        return torch.nan_to_num(final_rpm, nan=0.0)
+        motor_outputs = torch.clamp(motor_outputs, min = 0.0, max = 1.0)
+        motor_outputs = torch.sqrt(motor_outputs * self.TWR) * self.base_rpm   # convert to rpm command
+        return motor_outputs
     
     def pid_update_TpaFactor(self):
         if (self.rc_command[3] > 0.35):       # 0.35 is the tpa_breakpoint, the same as Betaflight, 
