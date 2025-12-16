@@ -283,4 +283,3 @@ def random_quaternion(num_envs=1, device="cuda"):
     quat = quat / quat.norm(dim=1, keepdim=True)
     return quat
 
-
