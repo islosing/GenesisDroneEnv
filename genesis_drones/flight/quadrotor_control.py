@@ -3,8 +3,6 @@ import torch
 import roma
 import yaml
 from scipy.spatial.transform import Rotation
-# 写一个读参数的方法，取代minco_params.py, controller读取，标准化（llm）
-
 
 class SE3Control(object):
     """
@@ -241,6 +239,7 @@ class SE3Control(object):
             'cmd_v': -self.kp_vel*pos_err + flat['x_dot'],
             'cmd_acc': F_des/self.mass
         }
+    
 class BatchedSE3Control(object):
     def __init__(self, batch_params, num_drones, device, kp_pos=None, kd_pos=None, kp_att=None, kd_att=None):
         '''

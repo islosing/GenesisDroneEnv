@@ -23,7 +23,7 @@ load_map: False
 use_rc: False
 show_viewer: True
 render_cam: False
-controller: "rate"
+controller: "angle"
 min_dis: 0.8
 map_width: 3.5
 map_length: 3.5

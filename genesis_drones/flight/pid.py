@@ -6,8 +6,6 @@ import genesis as gs
 import math
 from genesis.utils.geom import quat_to_R
 from genesis_drones.flight.odom import ve2vb
-import torch
-import math
 
 
 class PIDcontroller:
@@ -17,7 +15,7 @@ class PIDcontroller:
             rc_command, 
             odom, 
             config, 
-            controller = "rate",
+            controller = "angle",
             use_rc = False, 
             device = torch.device("cuda")):
 
@@ -80,8 +78,12 @@ class PIDcontroller:
         self.F_term_p = torch.zeros_like(self.P_term_p)                
         
         self.pid_freq = config.get("pid_exec_freq", 60)     # no use
+        self.dt = config.get("dt", 0.01)
         self.base_rpm = config.get("base_rpm", 14468.429183500699)
         self.TWR = config.get("TWR", 3.3)
+        self.max_roll_rate=config.get("max_roll_rate", 10)   # degree/s
+        self.max_pitch_rate=config.get("max_pitch_rate", 10) # degree/s
+        self.max_yaw_rate=config.get("max_yaw_rate", 7)      # degree/s
         self.dT = 1 / self.pid_freq                         # no use
         self.tpa_factor = 1
         self.tpa_rate = 0
@@ -95,7 +97,6 @@ class PIDcontroller:
         self.body_set_point = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.pid_output = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.cur_setpoint_error = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
-        self.last_setpoint_error = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.drone = None
 
         self.cnt = 0
@@ -162,12 +163,12 @@ class PIDcontroller:
         if action is None:
             self.body_set_point[:] = self.rc_command[:3] * 15   # max 15 rad/s
         else:
-            coeffs = torch.tensor([10.0, 10.0, 7.0], device=self.device) # 为 roll, pitch, yaw 设置不同的系数
-            self.body_set_point[:] = action[:, :3] * coeffs   # action is in rad/s, like [[roll, pitch, yaw, thrust]] if num_envs = 1  self.last_setpoint_error[:] = self.cur_setpoint_error
+            coeffs = torch.tensor([self.max_roll_rate, self.max_pitch_rate, self.max_yaw_rate], device=self.device) # max rate in rad/s
+            self.body_set_point[:] = action[:, :3] * coeffs   # action is in rad/s, like [[roll, pitch, yaw, thrust]] if num_envs = 1  
         self.cur_setpoint_error[:] = self.body_set_point - self.odom.body_ang_vel
         self.P_term_r[:] = (self.cur_setpoint_error * self.kp_r) * self.tpa_factor
-        self.I_term_r[:] = torch.clamp(self.I_term_r + self.cur_setpoint_error * self.ki_r*0.01, -0.5, 0.5)
-        self.D_term_r[:] = (self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_r * self.tpa_factor/0.01    
+        self.I_term_r[:] = torch.clamp(self.I_term_r + self.cur_setpoint_error * self.ki_r*self.dt, -0.5, 0.5)
+        self.D_term_r[:] = (self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_r * self.tpa_factor/self.dt    
 
         self.pid_output[:] = (self.P_term_r + self.I_term_r + self.D_term_r)
         self.last_body_ang_vel[:] = self.odom.body_ang_vel
@@ -183,7 +184,6 @@ class PIDcontroller:
             self.body_set_point[:] = -self.odom.body_euler * yaw_mask + self.rc_command[:3]  
         else:               # in RL mode
             self.body_set_point[:] = -self.odom.body_euler * yaw_mask + action[:, :3]  # action is in rad, like [[roll, pitch, yaw, thrust]] if num_envs = 1
-        self.last_setpoint_error[:] = self.cur_setpoint_error
         self.cur_setpoint_error[:] = (self.body_set_point * 15 - self.odom.body_ang_vel)
         self.P_term_a[:] = (self.cur_setpoint_error[:] * self.kp_a) * self.tpa_factor
         self.I_term_a[:] = torch.clamp(self.I_term_a + self.cur_setpoint_error[:] * self.ki_a, -0.5, 0.5)
@@ -251,7 +251,6 @@ class PIDcontroller:
         
         # Reset the last angular velocity
         self.last_body_ang_vel.index_fill_(0, reset_range, 0.0)
-        self.last_setpoint_error.index_fill_(0, reset_range, 0.0)
         self.cur_setpoint_error.index_fill_(0, reset_range, 0.0)
         # Reset the TPA factor and rate
         self.tpa_factor = 1
@@ -283,6 +282,5 @@ def random_quaternion(num_envs=1, device="cuda"):
     quat = torch.cat([w, x, y, z], dim=1)
     quat = quat / quat.norm(dim=1, keepdim=True)
     return quat
-
 
 

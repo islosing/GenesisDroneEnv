@@ -6,7 +6,6 @@ from scipy.spatial.transform import Rotation as R
 from genesis_drones.env.genesis_env import Genesis_env
 from genesis_drones.tasks.track_task import Track_task
 from genesis_drones.flight.quadrotor_control import SE3Control
-from genesis_drones.flight.minco_params import quad_params
 from rsl_rl.runners import OnPolicyRunner
 
 def main():
@@ -75,7 +74,7 @@ def main():
             pitch_norm = np.clip(pitch_norm, -1.0, 1.0)
             yaw_norm   = np.clip(yaw_norm,   -1.0, 1.0)
             # # -------------------------
-            # # 3. 拼成 action
+            # #  step env
             # # -------------------------
             action = np.hstack([roll_norm, pitch_norm, yaw_norm,thrust_norm ]).reshape(1, -1)
             action_tensor = torch.from_numpy(action).to(device).float()
