@@ -115,7 +115,12 @@ class SE3Control(object):
         return np.array([-S[1, 2], S[0, 2], -S[0, 1]], dtype=float)
 
     @staticmethod
-    def _safe_hopf_attitude_and_omega(zeta, zeta_dot, yaw, yaw_dot, eps=1e-6):
+    def _safe_hopf_attitude_and_omega(
+        zeta, zeta_dot, yaw, yaw_dot,
+        eps=1e-6,
+        yaw_rate_limit=5.0,   # rad/s
+        omega_limit=10.0      # rad/s
+    ):
         """
         Compute R_des and w_des from Hopf fibration formulas robustly near c=-1 by:
         - Build s = zeta/||zeta|| (desired b3)
@@ -124,6 +129,7 @@ class SE3Control(object):
         - Compute omega via HFCA closed-form
         - If flipped, flip back R_des (columns 0 and 2) and w_des (x and z)
         """
+
         zeta_norm = np.linalg.norm(zeta)
         if zeta_norm < eps:
             # caller should handle fallback; return None to indicate failure
@@ -136,7 +142,7 @@ class SE3Control(object):
         # s_dot via normalization derivative: s_dot = (I - s s^T) zeta_dot / ||zeta||
         # Your original P-form is equivalent.
         I3 = np.eye(3)
-        P = (zeta_norm**2 * I3 - np.outer(zeta, zeta)) / (zeta_norm**3 + 1e-12)
+        P = (zeta_norm**2 * I3 - np.outer(zeta, zeta)) / (zeta_norm**3 + eps)
         s_dot = P @ zeta_dot
         a_dot, b_dot, c_dot = s_dot
 
@@ -148,7 +154,9 @@ class SE3Control(object):
             a_dot, b_dot, c_dot = -a_dot, -b_dot, -c_dot
 
         # ---- Hopf tilt quaternion q_abc (stable since c >= 0 => 1+c >= 1) ----
-        denom = np.sqrt(max(2.0 * (1.0 + c), eps))
+        one_plus_c = max(1.0 + c, eps)
+        denom = np.sqrt(2.0 * one_plus_c)
+
         q_abc = np.array([
             (1.0 + c) / denom,
             -b / denom,
@@ -156,29 +164,51 @@ class SE3Control(object):
             0.0
         ], dtype=float)  # [w,x,y,z]
 
+        # ---- LIMIT: yaw wrap + yaw rate clamp ----
+        yaw = (yaw + np.pi) % (2.0 * np.pi) - np.pi
+        yaw_dot = np.clip(yaw_dot, -yaw_rate_limit, yaw_rate_limit)
+
         # yaw quaternion q_psi about +z
         half = 0.5 * yaw
-        q_psi = np.array([np.cos(half), 0.0, 0.0, np.sin(half)], dtype=float)
+        q_psi = np.array(
+            [np.cos(half), 0.0, 0.0, np.sin(half)],
+            dtype=float
+        )
 
         # total quaternion
         q_tot = SE3Control.quat_mul(q_abc, q_psi)  # [w,x,y,z]
 
         # scipy wants [x,y,z,w]
-        q_scipy = np.array([q_tot[1], q_tot[2], q_tot[3], q_tot[0]], dtype=float)
+        q_scipy = np.array(
+            [q_tot[1], q_tot[2], q_tot[3], q_tot[0]],
+            dtype=float
+        )
         R_des = Rotation.from_quat(q_scipy).as_matrix()
 
         # ---- omega formulas (stable since one_plus_c >= 1) ----
-        one_plus_c = max(1.0 + c, eps)
         sinp = np.sin(yaw)
         cosp = np.cos(yaw)
 
-        omega1 = (sinp * a_dot - cosp * b_dot
-                  - (a * sinp - b * cosp) * (c_dot / one_plus_c))
-        omega2 = (cosp * a_dot + sinp * b_dot
-                  - (a * cosp + b * sinp) * (c_dot / one_plus_c))
-        omega3 = ((b * a_dot - a * b_dot) / one_plus_c + yaw_dot)
+        # ---- LIMIT: protect c_dot / (1 + c) ----
+        omg_term = c_dot / one_plus_c
+        omg_term = np.clip(omg_term, -omega_limit, omega_limit)
+
+        omega1 = (
+            sinp * a_dot - cosp * b_dot
+            - (a * sinp - b * cosp) * omg_term
+        )
+        omega2 = (
+            cosp * a_dot + sinp * b_dot
+            - (a * cosp + b * sinp) * omg_term
+        )
+        omega3 = (b * a_dot - a * b_dot) / one_plus_c + yaw_dot
 
         w_des = np.array([omega1, omega2, omega3], dtype=float)
+
+        # ---- LIMIT: global omega saturation (final safety net) ----
+        omega_norm = np.linalg.norm(w_des)
+        if omega_norm > omega_limit:
+            w_des *= omega_limit / (omega_norm + eps)
 
         # ---- flip back to recover original (unflipped) b3_des = zeta/||zeta|| ----
         if flip < 0.0:
@@ -248,7 +278,9 @@ class SE3Control(object):
                 zeta_dot=flat['x_dddot'],
                 yaw=float(flat['yaw']),
                 yaw_dot=float(flat['yaw_dot']),
-                eps=1e-6
+                eps=1e-6,
+                yaw_rate_limit=5.0,   # rad/s
+                omega_limit=10.0      # rad/s
             )
             # ultra-safe fallback (should not happen)
             if R_des is None or w_des is None:
@@ -259,7 +291,7 @@ class SE3Control(object):
                 b1 = np.cross(b2, b3_des)
                 R_des = np.stack([b1, b2, b3_des], axis=1)
                 w_des = np.array([0.0, 0.0, float(flat['yaw_dot'])], dtype=float)
-
+        # w_des = omega_cmd  # override omega command
         # -----------------------
         # 3. ATTITUDE PD CONTROL
         # -----------------------
@@ -286,7 +318,6 @@ class SE3Control(object):
         # OUTPUTS
         # -----------------------
         cmd_q = Rotation.from_matrix(R_des).as_quat()  # scipy format [x,y,z,w]
-
         return {
             'cmd_motor_speeds': motor_speeds,
             'cmd_motor_thrusts': rotor_thrusts,
@@ -298,65 +329,53 @@ class SE3Control(object):
             'cmd_acc': F_des / self.mass
         }
     
-    def ctbr_action(
+    def action(
         self,
         control,
-        config,
+        flight_config,
+        env_config,
         device,
     ):
         """
         normlize the ctrl output to action space
         """
         # -------- thrust normlize --------
-        min_t = config["min_t"]
-        max_t = config["max_t"]
+        min_t = flight_config["min_t"]
+        max_t = flight_config["max_t"]
 
         thrust_norm = (control["cmd_thrust"] - min_t) / (max_t - min_t)
         thrust_norm = thrust_norm * 2.0 - 1.0
+        if env_config["controller"] == "rate": 
+            # -------- rate normlize --------
+            wx, wy, wz = control["cmd_w"]
 
-        # -------- rate normlize --------
-        wx, wy, wz = control["cmd_w"]
+            roll_norm  = wx / flight_config["max_roll_rate"]
+            pitch_norm = wy / flight_config["max_pitch_rate"]
+            yaw_norm   = wz / flight_config["max_yaw_rate"]
 
-        roll_norm  = wx / config["max_roll_rate"]
-        pitch_norm = wy / config["max_pitch_rate"]
-        yaw_norm   = wz / config["max_yaw_rate"]
+            roll_norm  = np.clip(roll_norm,  -1.0, 1.0)
+            pitch_norm = np.clip(pitch_norm, -1.0, 1.0)
+            yaw_norm   = np.clip(yaw_norm,   -1.0, 1.0)
 
-        roll_norm  = np.clip(roll_norm,  -1.0, 1.0)
-        pitch_norm = np.clip(pitch_norm, -1.0, 1.0)
-        yaw_norm   = np.clip(yaw_norm,   -1.0, 1.0)
+            # -------- action --------
+            action = np.array(
+                [roll_norm, pitch_norm, yaw_norm, thrust_norm],
+                dtype=np.float32
+            ).reshape(1, -1)
 
-        # -------- action --------
-        action = np.array(
-            [roll_norm, pitch_norm, yaw_norm, thrust_norm],
-            dtype=np.float32
-        ).reshape(1, -1)
+            action_tensor = torch.from_numpy(action).to(device).float()
+            
+        elif env_config["controller"] == "angle":
+            # -------- angle normlize --------
+            eulers = Rotation.from_quat(control["cmd_q"]).as_euler("xyz")
+            eulers = Rotation.from_quat(control["cmd_q"]).as_euler("xyz")
 
-        action_tensor = torch.from_numpy(action).to(device)
+            # -------- action --------
+            action_anger = np.hstack([eulers, thrust_norm]).reshape(1, -1)
+            action_tensor = torch.from_numpy(action_anger).to(device).float()
 
         return action_tensor
 
-    def ctatt_action(
-        self,
-        control,
-        config,
-        device,
-    ):
-        """
-        normlize the ctrl output to action space
-        """
-        # -------- thrust normlize --------
-        min_t = config["min_t"]
-        max_t = config["max_t"]
-
-        thrust_norm = (control["cmd_thrust"] - min_t) / (max_t - min_t)
-        thrust_norm = thrust_norm * 2.0 - 1.0
-
-        # -------- angle normlize --------
-        eulers = Rotation.from_quat(control["cmd_q"]).as_euler("xyz")
-        action_anger=np.hstack([eulers, thrust_norm]).reshape(1, -1)
-        action_tensor_anger = torch.from_numpy(action_anger).to(device).float()
-
-        return action_tensor_anger
        
 class BatchedSE3Control(object):
     def __init__(self, batch_params, num_drones, device, kp_pos=None, kd_pos=None, kp_att=None, kd_att=None):

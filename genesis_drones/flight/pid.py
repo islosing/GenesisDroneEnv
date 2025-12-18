@@ -184,7 +184,6 @@ class PIDcontroller:
             self.body_set_point[:] = -self.odom.body_euler * yaw_mask + self.rc_command[:3]  
         else:               # in RL mode
             self.body_set_point[:] = -self.odom.body_euler * yaw_mask + action[:, :3]  # action is in rad, like [[roll, pitch, yaw, thrust]] if num_envs = 1
-        print( self.odom.body_euler)
         self.cur_setpoint_error[:] = (self.body_set_point * 15 - self.odom.body_ang_vel)
         self.P_term_a[:] = (self.cur_setpoint_error[:] * self.kp_a) * self.tpa_factor
         self.I_term_a[:] = torch.clamp(self.I_term_a + self.cur_setpoint_error[:] * self.ki_a*self.dt, -0.5, 0.5)

@@ -62,9 +62,10 @@ def main():
             "yaw_dot": 0.0
             }
             ctrl = controller.update(0, state, flat)
-            action = controller.ctatt_action(
+            action = controller.action(
                 control=ctrl,
-                config=flight_config,
+                flight_config=flight_config,
+                env_config = env_config,
                 device=device,
             )
 
