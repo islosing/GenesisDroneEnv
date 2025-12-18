@@ -2,11 +2,9 @@ import torch
 import yaml
 import genesis as gs
 import numpy as np
-from scipy.spatial.transform import Rotation as R
 from genesis_drones.env.genesis_env import Genesis_env
 from genesis_drones.tasks.track_task import Track_task
 from genesis_drones.flight.quadrotor_control import SE3Control
-from rsl_rl.runners import OnPolicyRunner
 
 def main():
     gs.init(logging_level="warning")
@@ -19,7 +17,7 @@ def main():
     with open("config/track_rl/rl_env.yaml", "r") as file:
         rl_config = yaml.load(file, Loader=yaml.FullLoader)
 
-    with open("config//track_rl/flight.yaml", "r") as file:
+    with open("config/track_rl/flight.yaml", "r") as file:
         flight_config = yaml.load(file, Loader=yaml.FullLoader)
 
     task_config = rl_config["task"]
@@ -53,7 +51,7 @@ def main():
             "q": xyzw_quat,
             "w": genesis_env.drone.odom.body_ang_vel.cpu().numpy().flatten()
             }
-            flat= {
+            flat = {
             "x": track_task.command_buf.squeeze().tolist(),
             "x_dot": [0, 0, 0],
             "x_ddot": [0, 0, 0],
@@ -71,8 +69,5 @@ def main():
 
             obs, rews, dones, infos = track_task.step(action)
 
-if __name__ == "__main__" :
-    main()
-
-
-    
+if __name__ == "__main__":
+    main()  
