@@ -40,8 +40,13 @@ motor:
   rotor_speed_max: 210000.0
   motor_noise_std: 0.0
 
-controller:
-  k_w: 150
-  k_v: 10
-  kp_att: 1030
-  kd_att: 51
+flight:
+  g: 9.81
+  omega_z_limit: 7
+  omega_xy_limit: 10
+
+gains:
+  kp_pos: [16, 16, 16]
+  kd_pos: [5, 5, 7]
+  kp_att: 20.44
+  kd_att: 0.1

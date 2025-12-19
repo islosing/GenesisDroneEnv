@@ -36,15 +36,17 @@ class SE3Control(object):
             [self.Ixz, self.Iyz, self.Izz]
         ])
 
-        self.g = 9.81
+        self.g = cfg["flight"]["g"]
+        self.omega_z_limit = cfg["flight"]["omega_z_limit"]
+        self.omega_xy_limit = cfg["flight"]["omega_xy_limit"]
 
         # =====================
         # Gains
         # =====================
-        self.kp_pos = np.array([16, 16, 16])
-        self.kd_pos = np.array([5, 5, 7])
-        self.kp_att = 20.44
-        self.kd_att = 0.1
+        self.kp_pos = np.array(cfg["gains"]["kp_pos"])
+        self.kd_pos = np.array(cfg["gains"]["kd_pos"])
+        self.kp_att = cfg["gains"]["kp_att"]
+        self.kd_att = cfg["gains"]["kd_att"]
         self.kp_vel = 0.1 * self.kp_pos
 
         # =====================
@@ -118,8 +120,8 @@ class SE3Control(object):
     def _safe_hopf_attitude_and_omega(
         zeta, zeta_dot, yaw, yaw_dot,
         eps=1e-6,
-        yaw_rate_limit=5.0,   # rad/s
-        omega_limit=10.0      # rad/s
+        omega_z_limit=5.0,   # rad/s
+        omega_xy_limit=10.0      # rad/s
     ):
         """
         Compute R_des and w_des from Hopf fibration formulas robustly near c=-1 by:
@@ -166,7 +168,6 @@ class SE3Control(object):
 
         # ---- LIMIT: yaw wrap + yaw rate clamp ----
         yaw = (yaw + np.pi) % (2.0 * np.pi) - np.pi
-        yaw_dot = np.clip(yaw_dot, -yaw_rate_limit, yaw_rate_limit)
 
         # yaw quaternion q_psi about +z
         half = 0.5 * yaw
@@ -191,7 +192,6 @@ class SE3Control(object):
 
         # ---- LIMIT: protect c_dot / (1 + c) ----
         omg_term = c_dot / one_plus_c
-        omg_term = np.clip(omg_term, -omega_limit, omega_limit)
 
         omega1 = (
             sinp * a_dot - cosp * b_dot
@@ -202,13 +202,9 @@ class SE3Control(object):
             - (a * cosp + b * sinp) * omg_term
         )
         omega3 = (b * a_dot - a * b_dot) / one_plus_c + yaw_dot
-
+        omega3 = np.clip(omega3, -omega_z_limit, omega_z_limit)
         w_des = np.array([omega1, omega2, omega3], dtype=float)
-
-        # ---- LIMIT: global omega saturation (final safety net) ----
-        omega_norm = np.linalg.norm(w_des)
-        if omega_norm > omega_limit:
-            w_des *= omega_limit / (omega_norm + eps)
+        w_des = np.clip(w_des, -omega_xy_limit, omega_xy_limit)
 
         # ---- flip back to recover original (unflipped) b3_des = zeta/||zeta|| ----
         if flip < 0.0:
@@ -224,7 +220,7 @@ class SE3Control(object):
     # ============================================================
     #                       MAIN UPDATE()
     # ============================================================
-    def update(self, t, state, flat):
+    def update(self, t, state, flat, omega_cmd=None):
         """
         state:
             x: position (3,)
@@ -240,6 +236,9 @@ class SE3Control(object):
         # --------------------
         # 1. DESIRED ACC ζ
         # --------------------
+        wxyz_quat = state["q"]  
+        xyzw_quat = wxyz_quat[1:].tolist() + [wxyz_quat[0]]
+        state["q"] = xyzw_quat
         pos_err = state['x'] - flat['x']
         vel_err = state['v'] - flat['x_dot']
 
@@ -279,8 +278,8 @@ class SE3Control(object):
                 yaw=float(flat['yaw']),
                 yaw_dot=float(flat['yaw_dot']),
                 eps=1e-6,
-                yaw_rate_limit=5.0,   # rad/s
-                omega_limit=10.0      # rad/s
+                omega_z_limit=self.omega_z_limit,   # rad/s
+                omega_xy_limit=self.omega_xy_limit      # rad/s
             )
             # ultra-safe fallback (should not happen)
             if R_des is None or w_des is None:
@@ -291,7 +290,8 @@ class SE3Control(object):
                 b1 = np.cross(b2, b3_des)
                 R_des = np.stack([b1, b2, b3_des], axis=1)
                 w_des = np.array([0.0, 0.0, float(flat['yaw_dot'])], dtype=float)
-        # w_des = omega_cmd  # override omega command
+        if omega_cmd is not None:
+            w_des = omega_cmd  # override omega command
         # -----------------------
         # 3. ATTITUDE PD CONTROL
         # -----------------------
@@ -318,6 +318,7 @@ class SE3Control(object):
         # OUTPUTS
         # -----------------------
         cmd_q = Rotation.from_matrix(R_des).as_quat()  # scipy format [x,y,z,w]
+        
         return {
             'cmd_motor_speeds': motor_speeds,
             'cmd_motor_thrusts': rotor_thrusts,

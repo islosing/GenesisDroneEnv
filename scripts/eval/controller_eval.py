@@ -42,13 +42,11 @@ def main():
 
     with torch.no_grad():
         for step in range(max_sim_step):
-            wxyz_quat = genesis_env.drone.odom.body_quat.cpu().numpy().flatten()  
-            xyzw_quat = wxyz_quat[1:].tolist() + [wxyz_quat[0]]
                 
             state = {
             "x": genesis_env.drone.odom.world_pos.cpu().numpy().flatten(),
             "v": genesis_env.drone.odom.world_linear_vel.cpu().numpy().flatten(),
-            "q": xyzw_quat,
+            "q": genesis_env.drone.odom.body_quat.cpu().numpy().flatten(),
             "w": genesis_env.drone.odom.body_ang_vel.cpu().numpy().flatten()
             }
             flat = {
