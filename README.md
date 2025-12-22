@@ -73,6 +73,13 @@ By following this tutorial, you’ll be able to train and evaluate a basic drone
 ```bash
 python scripts/eval/controller_eval.py
 ```
+The SO(3) controller implementation is based on the geometric control framework proposed in:
+
+[“Geometric tracking control of a quadrotor UAV on SE(3)”](https://ieeexplore.ieee.org/document/5717652)
+
+In addition, the attitude control law incorporates concepts from Hopf fibration–based control, following:
+
+[“Control of Quadrotors Using the Hopf Fibration on SO(3)”](https://link.springer.com/chapter/10.1007/978-3-030-28619-4_20)
 ## Acknowledgement
 
 This repository is inspired by the following work:
