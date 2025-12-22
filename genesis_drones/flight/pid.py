@@ -110,7 +110,7 @@ class PIDcontroller:
         if action is None:
             throttle = throttle_rc
         else:
-            throttle_action = torch.clamp(action[:, -1], min=-1, max=1.0)
+            throttle_action = torch.clamp(action[:, -1], min=-1.0, max=1.0)
             throttle = (throttle_action + 1) / 2
         motor_outputs = torch.stack([
            throttle - self.pid_output[:, 0] - self.pid_output[:, 1] - self.pid_output[:, 2],  # M1
@@ -179,11 +179,10 @@ class PIDcontroller:
         :param: 
             action: torch.Size([num_envs, 4]), like [[roll, pitch, yaw, thrust]] if num_envs = 1
         """
-        yaw_mask = torch.tensor([1,1,1], device=self.device)
         if action is None:  # in RC mode
-            self.body_set_point[:] = -self.odom.body_euler * yaw_mask + self.rc_command[:3]  
+            self.body_set_point[:] = -self.odom.body_euler + self.rc_command[:3]  
         else:               # in RL mode
-            self.body_set_point[:] = -self.odom.body_euler * yaw_mask + action[:, :3]  # action is in rad, like [[roll, pitch, yaw, thrust]] if num_envs = 1
+            self.body_set_point[:] = -self.odom.body_euler + action[:, :3]  # action is in rad, like [[roll, pitch, yaw, thrust]] if num_envs = 1
         self.cur_setpoint_error[:] = (self.body_set_point * 15 - self.odom.body_ang_vel)
         self.P_term_a[:] = (self.cur_setpoint_error[:] * self.kp_a) * self.tpa_factor
         self.I_term_a[:] = torch.clamp(self.I_term_a + self.cur_setpoint_error[:] * self.ki_a*self.dt, -0.5, 0.5)
