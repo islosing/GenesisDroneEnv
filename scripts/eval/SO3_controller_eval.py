@@ -4,7 +4,8 @@ import genesis as gs
 import numpy as np
 from genesis_drones.env.genesis_env import Genesis_env
 from genesis_drones.tasks.track_task import Track_task
-from genesis_drones.flight.quadrotor_control import SE3Control
+from genesis_drones.flight.SO3_control import SE3Control
+from genesis_drones.flight.trajectory import circular_trajectory
 
 
 def main():
@@ -48,7 +49,7 @@ def main():
                 "q": genesis_env.drone.odom.body_quat.cpu().numpy().flatten(),
                 "w": genesis_env.drone.odom.body_ang_vel.cpu().numpy().flatten(),
             }
-            if env_config.get("use_trajectory", False):
+            if env_config.get("use_trajectory", True):
                 dt = env_config["dt"]
 
                 t = step * dt
@@ -57,28 +58,9 @@ def main():
                 R = 0.5
                 omega = 3
                 cx, cy, cz = 0.0, 0.0, 0.8  # center of the circle
-                x_ref = [
-                    cx + R * np.cos(omega * t),  # x
-                    cy,  # y
-                    cz + R * np.sin(omega * t),  # z
-                ]
-                x_dot_ref = [
-                    -R * omega * np.sin(omega * t),
-                    0.0,
-                    R * omega * np.cos(omega * t),
-                ]
-                x_ddot_ref = [
-                    -R * omega**2 * np.cos(omega * t),
-                    0.0,
-                    -R * omega**2 * np.sin(omega * t),
-                ]
-                x_dddot_ref = [
-                    R * omega**3 * np.sin(omega * t),
-                    0.0,
-                    -R * omega**3 * np.cos(omega * t),
-                ]
-                yaw = 0.0
-                yaw_dot = 0.0
+                x_ref, x_dot_ref, x_ddot_ref, x_dddot_ref, yaw, yaw_dot = circular_trajectory(
+                    t, R, omega, (cx, cy, cz)
+                )
             else:
                 x_ref = track_task.command_buf.squeeze().tolist()
                 x_dot_ref = [0, 0, 0]
