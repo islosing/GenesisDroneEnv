@@ -218,7 +218,7 @@ class SE3Control(object):
     # ============================================================
     #                       MAIN UPDATE()
     # ============================================================
-    def update(self, t, state, flat, omega_cmd=None):
+    def update(self, t, state, flat, omega_cmd=None, quat_format="wxyz"):
         """
         state:
             x: position (3,)
@@ -234,9 +234,19 @@ class SE3Control(object):
         # --------------------
         # 1. DESIRED ACC ζ
         # --------------------
-        wxyz_quat = state["q"]
-        xyzw_quat = wxyz_quat[1:].tolist() + [wxyz_quat[0]]
-        state["q"] = xyzw_quat
+        q = state["q"]
+
+        if quat_format.lower() == "wxyz":
+            # [w, x, y, z] -> [x, y, z, w]
+            q = np.asarray(q, dtype=float).reshape(4,)
+            state["q"] = np.array([q[1], q[2], q[3], q[0]], dtype=float)
+        elif quat_format.lower() == "xyzw":
+            # already scipy format
+            q = np.asarray(q, dtype=float).reshape(4,)
+            state["q"] = q
+        else:
+            raise ValueError(f"Unknown quat_format: {quat_format}, expected 'wxyz' or 'xyzw'")
+
         pos_err = state["x"] - flat["x"]
         vel_err = state["v"] - flat["x_dot"]
 

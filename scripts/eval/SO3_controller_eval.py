@@ -104,7 +104,7 @@ def main():
                 "yaw": yaw,
                 "yaw_dot": yaw_dot,
             }
-            ctrl = controller.update(0, state, flat)
+            ctrl = controller.update(0, state, flat, None, "wxyz")
             action = controller.action(
                 control=ctrl,
                 flight_config=flight_config,
