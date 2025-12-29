@@ -1,3 +1,4 @@
+import argparse
 import torch
 import yaml
 import genesis as gs
@@ -8,7 +9,33 @@ from genesis_drones.flight.SO3_control import SE3Control
 from genesis_drones.flight.trajectory import circular_trajectory
 
 
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "--use-trajectory",
+        action="store_true",
+        help="Use reference trajectory instead of command buffer",
+    )
+    p.add_argument(
+        "--no-trajectory",
+        action="store_true",
+        help="Do not use reference trajectory",
+    )
+    return p.parse_args()
+
+
 def main():
+    args = parse_args()
+
+    if args.use_trajectory and args.no_trajectory:
+        raise ValueError("Cannot set both --use-trajectory and --no-trajectory")
+
+    if args.use_trajectory:
+        use_trajectory = True
+    elif args.no_trajectory:
+        use_trajectory = False
+    else:
+        use_trajectory = True
     gs.init(logging_level="warning")
     max_sim_step = 10000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -49,7 +76,7 @@ def main():
                 "q": genesis_env.drone.odom.body_quat.cpu().numpy().flatten(),
                 "w": genesis_env.drone.odom.body_ang_vel.cpu().numpy().flatten(),
             }
-            if env_config.get("use_trajectory", True):
+            if use_trajectory:
                 dt = env_config["dt"]
 
                 t = step * dt
@@ -58,8 +85,8 @@ def main():
                 R = 0.5
                 omega = 3
                 cx, cy, cz = 0.0, 0.0, 0.8  # center of the circle
-                x_ref, x_dot_ref, x_ddot_ref, x_dddot_ref, yaw, yaw_dot = circular_trajectory(
-                    t, R, omega, (cx, cy, cz)
+                x_ref, x_dot_ref, x_ddot_ref, x_dddot_ref, yaw, yaw_dot = (
+                    circular_trajectory(t, R, omega, (cx, cy, cz))
                 )
             else:
                 x_ref = track_task.command_buf.squeeze().tolist()
