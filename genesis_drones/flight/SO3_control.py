@@ -20,71 +20,81 @@ class SE3Control(object):
         with open(yaml_path, "r") as file:
             cfg = yaml.load(file, Loader=yaml.FullLoader)
 
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.dtype = torch.double
+
         # =====================
         # Inertia
         # =====================
-        self.mass = cfg["inertia"]["mass"]
-        self.Ixx = cfg["inertia"]["Ixx"]
-        self.Iyy = cfg["inertia"]["Iyy"]
-        self.Izz = cfg["inertia"]["Izz"]
-        self.Ixy = cfg["inertia"]["Ixy"]
-        self.Ixz = cfg["inertia"]["Ixz"]
-        self.Iyz = cfg["inertia"]["Iyz"]
+        self.mass = float(cfg["inertia"]["mass"])
+        self.Ixx = float(cfg["inertia"]["Ixx"])
+        self.Iyy = float(cfg["inertia"]["Iyy"])
+        self.Izz = float(cfg["inertia"]["Izz"])
+        self.Ixy = float(cfg["inertia"]["Ixy"])
+        self.Ixz = float(cfg["inertia"]["Ixz"])
+        self.Iyz = float(cfg["inertia"]["Iyz"])
 
-        self.inertia = np.array(
+        self.inertia = torch.tensor(
             [
                 [self.Ixx, self.Ixy, self.Ixz],
                 [self.Ixy, self.Iyy, self.Iyz],
                 [self.Ixz, self.Iyz, self.Izz],
-            ]
+            ],
+            dtype=self.dtype,
+            device=self.device,
         )
 
-        self.g = cfg["flight"]["g"]
-        self.omega_z_limit = cfg["flight"]["omega_z_limit"]
-        self.omega_xy_limit = cfg["flight"]["omega_xy_limit"]
+        self.g = float(cfg["flight"]["g"])
+        self.omega_z_limit = float(cfg["flight"]["omega_z_limit"])
+        self.omega_xy_limit = float(cfg["flight"]["omega_xy_limit"])
 
         # =====================
         # Gains
         # =====================
-        self.kp_pos = np.array(cfg["gains"]["kp_pos"])
-        self.kd_pos = np.array(cfg["gains"]["kd_pos"])
-        self.kp_att = cfg["gains"]["kp_att"]
-        self.kd_att = cfg["gains"]["kd_att"]
+        self.kp_pos = torch.tensor(
+            cfg["gains"]["kp_pos"], dtype=self.dtype, device=self.device
+        )
+        self.kd_pos = torch.tensor(
+            cfg["gains"]["kd_pos"], dtype=self.dtype, device=self.device
+        )
+        self.kp_att = float(cfg["gains"]["kp_att"])
+        self.kd_att = float(cfg["gains"]["kd_att"])
         self.kp_vel = 0.1 * self.kp_pos
 
         # =====================
         # Rotor geometry
         # =====================
-        d = cfg["arm_length"]
+        d = float(cfg["arm_length"])
 
-        self.num_rotors = cfg["geometry"]["num_rotors"]
+        self.num_rotors = int(cfg["geometry"]["num_rotors"])
 
         self.rotor_pos = {
-            k: d * np.array(v, dtype=float)
+            k: torch.tensor(v, dtype=self.dtype, device=self.device) * d
             for k, v in cfg["geometry"]["rotor_pos"].items()
         }
 
-        self.rotor_dir = np.array(cfg["geometry"]["rotor_directions"], dtype=float)
+        self.rotor_dir = torch.tensor(
+            cfg["geometry"]["rotor_directions"], dtype=self.dtype, device=self.device
+        )
 
         # =====================
         # Rotor / motor parameters
         # =====================
-        self.k_eta = cfg["rotor"]["k_eta"]
-        self.k_m = cfg["rotor"]["k_m"]
+        self.k_eta = float(cfg["rotor"]["k_eta"])
+        self.k_m = float(cfg["rotor"]["k_m"])
 
         # =====================
         # Allocation matrix
         # =====================
         k = self.k_m / self.k_eta
 
-        self.f_to_TM = np.vstack(
+        e3 = torch.tensor([0.0, 0.0, 1.0], dtype=self.dtype, device=self.device)
+        self.f_to_TM = torch.vstack(
             (
-                np.ones((1, self.num_rotors)),
-                np.hstack(
+                torch.ones((1, self.num_rotors), dtype=self.dtype, device=self.device),
+                torch.hstack(
                     [
-                        np.cross(self.rotor_pos[key], np.array([0, 0, 1]))[:2].reshape(
-                            -1, 1
-                        )
+                        torch.cross(self.rotor_pos[key], e3, dim=0)[:2].reshape(-1, 1)
                         for key in self.rotor_pos
                     ]
                 ),
@@ -92,7 +102,7 @@ class SE3Control(object):
             )
         )
 
-        self.TM_to_f = np.linalg.inv(self.f_to_TM)
+        self.TM_to_f = torch.linalg.inv(self.f_to_TM)
 
     # ------------------------
     # HFCA QUATERNION MULTIPLY
@@ -104,19 +114,19 @@ class SE3Control(object):
         """
         w1, x1, y1, z1 = q1
         w2, x2, y2, z2 = q2
-        return np.array(
+        return torch.stack(
             [
                 w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
                 w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
                 w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
                 w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
             ],
-            dtype=float,
+            dim=0,
         )
 
     @staticmethod
     def normalize(v, eps=1e-9):
-        n = np.linalg.norm(v)
+        n = torch.linalg.norm(v)
         if n < eps:
             return v
         return v / n
@@ -124,7 +134,59 @@ class SE3Control(object):
     @staticmethod
     def vee(S):
         """vee-map for so(3) -> R^3 for skew-symmetric matrix S."""
-        return np.array([-S[1, 2], S[0, 2], -S[0, 1]], dtype=float)
+        return torch.stack([-S[1, 2], S[0, 2], -S[0, 1]], dim=0)
+
+    @staticmethod
+    def _quat_wxyz_to_rotmat(q):
+        # q: (4,) [w,x,y,z]
+        w, x, y, z = q
+        ww, xx, yy, zz = w * w, x * x, y * y, z * z
+        wx, wy, wz = w * x, w * y, w * z
+        xy, xz, yz = x * y, x * z, y * z
+
+        R = torch.stack(
+            [
+                torch.stack([ww + xx - yy - zz, 2 * (xy - wz), 2 * (xz + wy)], dim=0),
+                torch.stack([2 * (xy + wz), ww - xx + yy - zz, 2 * (yz - wx)], dim=0),
+                torch.stack([2 * (xz - wy), 2 * (yz + wx), ww - xx - yy + zz], dim=0),
+            ],
+            dim=0,
+        )
+        return R
+
+    @staticmethod
+    def _rotmat_to_quat_wxyz(R, eps=1e-12):
+        # robust-ish rotmat -> quat [w,x,y,z]
+        tr = R[0, 0] + R[1, 1] + R[2, 2]
+        if tr > 0.0:
+            S = torch.sqrt(tr + 1.0) * 2.0
+            w = 0.25 * S
+            x = (R[2, 1] - R[1, 2]) / (S + eps)
+            y = (R[0, 2] - R[2, 0]) / (S + eps)
+            z = (R[1, 0] - R[0, 1]) / (S + eps)
+        else:
+            if (R[0, 0] > R[1, 1]) and (R[0, 0] > R[2, 2]):
+                S = torch.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2.0
+                w = (R[2, 1] - R[1, 2]) / (S + eps)
+                x = 0.25 * S
+                y = (R[0, 1] + R[1, 0]) / (S + eps)
+                z = (R[0, 2] + R[2, 0]) / (S + eps)
+            elif R[1, 1] > R[2, 2]:
+                S = torch.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2.0
+                w = (R[0, 2] - R[2, 0]) / (S + eps)
+                x = (R[0, 1] + R[1, 0]) / (S + eps)
+                y = 0.25 * S
+                z = (R[1, 2] + R[2, 1]) / (S + eps)
+            else:
+                S = torch.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2.0
+                w = (R[1, 0] - R[0, 1]) / (S + eps)
+                x = (R[0, 2] + R[2, 0]) / (S + eps)
+                y = (R[1, 2] + R[2, 1]) / (S + eps)
+                z = 0.25 * S
+
+        q = torch.stack([w, x, y, z], dim=0)
+        q = q / (torch.linalg.norm(q) + eps)
+        return q
 
     @staticmethod
     def _safe_hopf_attitude_and_omega(
@@ -145,7 +207,7 @@ class SE3Control(object):
         - If flipped, flip back R_des (columns 0 and 2) and w_des (x and z)
         """
 
-        zeta_norm = np.linalg.norm(zeta)
+        zeta_norm = torch.linalg.norm(zeta)
         if zeta_norm < eps:
             # caller should handle fallback; return None to indicate failure
             return None, None
@@ -156,8 +218,8 @@ class SE3Control(object):
 
         # s_dot via normalization derivative: s_dot = (I - s s^T) zeta_dot / ||zeta||
         # Your original P-form is equivalent.
-        I3 = np.eye(3)
-        P = (zeta_norm**2 * I3 - np.outer(zeta, zeta)) / (zeta_norm**3 + eps)
+        I3 = torch.eye(3, dtype=zeta.dtype, device=zeta.device)
+        P = (zeta_norm**2 * I3 - torch.outer(zeta, zeta)) / (zeta_norm**3 + eps)
         s_dot = P @ zeta_dot
         a_dot, b_dot, c_dot = s_dot
 
@@ -169,30 +231,42 @@ class SE3Control(object):
             a_dot, b_dot, c_dot = -a_dot, -b_dot, -c_dot
 
         # ---- Hopf tilt quaternion q_abc (stable since c >= 0 => 1+c >= 1) ----
-        one_plus_c = max(1.0 + c, eps)
-        denom = np.sqrt(2.0 * one_plus_c)
+        one_plus_c = torch.clamp(1.0 + c, min=eps)
+        denom = torch.sqrt(2.0 * one_plus_c)
 
-        q_abc = np.array(
-            [(1.0 + c) / denom, -b / denom, a / denom, 0.0], dtype=float
+        q_abc = torch.stack(
+            [
+                (1.0 + c) / denom,
+                -b / denom,
+                a / denom,
+                torch.zeros((), dtype=zeta.dtype, device=zeta.device),
+            ],
+            dim=0,
         )  # [w,x,y,z]
 
         # ---- LIMIT: yaw wrap + yaw rate clamp ----
-        yaw = (yaw + np.pi) % (2.0 * np.pi) - np.pi
+        yaw = torch.remainder(yaw + torch.pi, 2.0 * torch.pi) - torch.pi
 
         # yaw quaternion q_psi about +z
         half = 0.5 * yaw
-        q_psi = np.array([np.cos(half), 0.0, 0.0, np.sin(half)], dtype=float)
+        q_psi = torch.stack(
+            [
+                torch.cos(half),
+                torch.zeros_like(half),
+                torch.zeros_like(half),
+                torch.sin(half),
+            ],
+            dim=0,
+        )
 
         # total quaternion
         q_tot = SE3Control.quat_mul(q_abc, q_psi)  # [w,x,y,z]
 
-        # scipy wants [x,y,z,w]
-        q_scipy = np.array([q_tot[1], q_tot[2], q_tot[3], q_tot[0]], dtype=float)
-        R_des = Rotation.from_quat(q_scipy).as_matrix()
+        R_des = SE3Control._quat_wxyz_to_rotmat(q_tot)
 
         # ---- omega formulas (stable since one_plus_c >= 1) ----
-        sinp = np.sin(yaw)
-        cosp = np.cos(yaw)
+        sinp = torch.sin(yaw)
+        cosp = torch.cos(yaw)
 
         # ---- LIMIT: protect c_dot / (1 + c) ----
         omg_term = c_dot / one_plus_c
@@ -200,9 +274,11 @@ class SE3Control(object):
         omega1 = sinp * a_dot - cosp * b_dot - (a * sinp - b * cosp) * omg_term
         omega2 = cosp * a_dot + sinp * b_dot - (a * cosp + b * sinp) * omg_term
         omega3 = (b * a_dot - a * b_dot) / one_plus_c + yaw_dot
-        omega3 = np.clip(omega3, -omega_z_limit, omega_z_limit)
-        w_des = np.array([omega1, omega2, omega3], dtype=float)
-        w_des = np.clip(w_des, -omega_xy_limit, omega_xy_limit)
+
+        # limit w_des with separate z/xy limits
+        w_des = torch.stack([omega1, omega2, omega3], dim=0)
+        w_des[0:2] = torch.clamp(w_des[0:2], -omega_xy_limit, omega_xy_limit)
+        w_des[2] = torch.clamp(w_des[2], -omega_z_limit, omega_z_limit)
 
         # ---- flip back to recover original (unflipped) b3_des = zeta/||zeta|| ----
         if flip < 0.0:
@@ -234,59 +310,86 @@ class SE3Control(object):
         # --------------------
         # 1. DESIRED ACC ζ
         # --------------------
-        q = state["q"]
+        # Convert inputs to torch (do not change external formats)
+        x = torch.as_tensor(state["x"], dtype=self.dtype, device=self.device)
+        v = torch.as_tensor(state["v"], dtype=self.dtype, device=self.device)
+        w_body = torch.as_tensor(state["w"], dtype=self.dtype, device=self.device)
+        q_in = torch.as_tensor(
+            state["q"], dtype=self.dtype, device=self.device
+        ).reshape(
+            4,
+        )
 
+        # Keep same behavior: rewrite state["q"] as scipy [x,y,z,w] for downstream if someone expects it
         if quat_format.lower() == "wxyz":
             # [w, x, y, z] -> [x, y, z, w]
-            q = np.asarray(q, dtype=float).reshape(4,)
-            state["q"] = np.array([q[1], q[2], q[3], q[0]], dtype=float)
+            q_xyzw = torch.stack([q_in[1], q_in[2], q_in[3], q_in[0]], dim=0)
         elif quat_format.lower() == "xyzw":
             # already scipy format
-            q = np.asarray(q, dtype=float).reshape(4,)
-            state["q"] = q
+            q_xyzw = q_in
         else:
-            raise ValueError(f"Unknown quat_format: {quat_format}, expected 'wxyz' or 'xyzw'")
+            raise ValueError(
+                f"Unknown quat_format: {quat_format}, expected 'wxyz' or 'xyzw'"
+            )
+        # state["q"] = q_xyzw.detach().cpu().numpy()
 
-        pos_err = state["x"] - flat["x"]
-        vel_err = state["v"] - flat["x_dot"]
+        # For internal rotation math, use wxyz
+        q_wxyz = torch.stack([q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]], dim=0)
+
+        x_ref = torch.as_tensor(flat["x"], dtype=self.dtype, device=self.device)
+        x_dot_ref = torch.as_tensor(flat["x_dot"], dtype=self.dtype, device=self.device)
+        x_ddot_ref = torch.as_tensor(
+            flat["x_ddot"], dtype=self.dtype, device=self.device
+        )
+        x_dddot_ref = torch.as_tensor(
+            flat["x_dddot"], dtype=self.dtype, device=self.device
+        )
+        yaw = torch.as_tensor(flat["yaw"], dtype=self.dtype, device=self.device)
+        yaw_dot = torch.as_tensor(flat["yaw_dot"], dtype=self.dtype, device=self.device)
+
+        pos_err = x - x_ref
+        vel_err = v - x_dot_ref
 
         zeta = (
             -self.kp_pos * pos_err
             - self.kd_pos * vel_err
-            + flat["x_ddot"]
-            + np.array([0.0, 0.0, self.g])
+            + x_ddot_ref
+            + torch.tensor([0.0, 0.0, self.g], dtype=self.dtype, device=self.device)
         )
 
         F_des = self.mass * zeta
 
         # Current attitude
-        R = Rotation.from_quat(state["q"]).as_matrix()
-        b3 = R @ np.array([0.0, 0.0, 1.0])
+        R = self._quat_wxyz_to_rotmat(q_wxyz)
+        b3 = R @ torch.tensor([0.0, 0.0, 1.0], dtype=self.dtype, device=self.device)
 
         # Scalar thrust
-        u1 = float(np.dot(F_des, b3))
+        u1 = torch.dot(F_des, b3)
 
         # ---------------------------
         # 2. DESIRED ATTITUDE (Hopf, robust near c=-1)
         # ---------------------------
         eps = 1e-6
-        zeta_norm = np.linalg.norm(zeta)
+        zeta_norm = torch.linalg.norm(zeta)
 
         if zeta_norm < eps:
             # fallback to classic SE3 direction + yaw
-            b3_des = np.array([0.0, 0.0, 1.0])
-            yaw = float(flat["yaw"])
-            c1 = np.array([np.cos(yaw), np.sin(yaw), 0.0])
-            b2 = self.normalize(np.cross(b3_des, c1))
-            b1 = np.cross(b2, b3_des)
-            R_des = np.stack([b1, b2, b3_des], axis=1)
-            w_des = np.array([0.0, 0.0, float(flat["yaw_dot"])], dtype=float)
+            b3_des = torch.tensor([0.0, 0.0, 1.0], dtype=self.dtype, device=self.device)
+            c1 = torch.stack(
+                [torch.cos(yaw), torch.sin(yaw), torch.zeros_like(yaw)], dim=0
+            )
+            b2 = self.normalize(torch.cross(b3_des, c1, dim=0))
+            b1 = torch.cross(b2, b3_des, dim=0)
+            R_des = torch.stack([b1, b2, b3_des], dim=1)
+            w_des = torch.stack(
+                [torch.zeros_like(yaw_dot), torch.zeros_like(yaw_dot), yaw_dot], dim=0
+            )
         else:
             R_des, w_des = self._safe_hopf_attitude_and_omega(
                 zeta=zeta,
-                zeta_dot=flat["x_dddot"],
-                yaw=float(flat["yaw"]),
-                yaw_dot=float(flat["yaw_dot"]),
+                zeta_dot=x_dddot_ref,
+                yaw=yaw,
+                yaw_dot=yaw_dot,
                 eps=1e-6,
                 omega_z_limit=self.omega_z_limit,  # rad/s
                 omega_xy_limit=self.omega_xy_limit,  # rad/s
@@ -294,24 +397,32 @@ class SE3Control(object):
             # ultra-safe fallback (should not happen)
             if R_des is None or w_des is None:
                 b3_des = zeta / zeta_norm
-                yaw = float(flat["yaw"])
-                c1 = np.array([np.cos(yaw), np.sin(yaw), 0.0])
-                b2 = self.normalize(np.cross(b3_des, c1))
-                b1 = np.cross(b2, b3_des)
-                R_des = np.stack([b1, b2, b3_des], axis=1)
-                w_des = np.array([0.0, 0.0, float(flat["yaw_dot"])], dtype=float)
+                c1 = torch.stack(
+                    [torch.cos(yaw), torch.sin(yaw), torch.zeros_like(yaw)], dim=0
+                )
+                b2 = self.normalize(torch.cross(b3_des, c1, dim=0))
+                b1 = torch.cross(b2, b3_des, dim=0)
+                R_des = torch.stack([b1, b2, b3_des], dim=1)
+                w_des = torch.stack(
+                    [torch.zeros_like(yaw_dot), torch.zeros_like(yaw_dot), yaw_dot],
+                    dim=0,
+                )
+
         if omega_cmd is not None:
-            w_des = omega_cmd  # override omega command
+            w_des = torch.as_tensor(
+                omega_cmd, dtype=self.dtype, device=self.device
+            )  # override omega command
+
         # -----------------------
         # 3. ATTITUDE PD CONTROL
         # -----------------------
         S_err = 0.5 * (R_des.T @ R - R.T @ R_des)
         att_err = self.vee(S_err)
-        w_err = state["w"] - w_des
+        w_err = w_body - w_des
 
-        u2 = self.inertia @ (-self.kp_att * att_err - self.kd_att * w_err) + np.cross(
-            state["w"], self.inertia @ state["w"]
-        )
+        u2 = self.inertia @ (
+            -self.kp_att * att_err - self.kd_att * w_err
+        ) + torch.cross(w_body, self.inertia @ w_body, dim=0)
 
         # body-rate command (optional)
         cmd_w = -self.kp_att * att_err - self.kd_att * w_err
@@ -319,26 +430,29 @@ class SE3Control(object):
         # -----------------------
         # 4. MOTOR ALLOCATION
         # -----------------------
-        TM = np.array([u1, u2[0], u2[1], u2[2]], dtype=float)
+        TM = torch.stack([u1, u2[0], u2[1], u2[2]], dim=0)
         rotor_thrusts = self.TM_to_f @ TM
 
         motor_speeds = rotor_thrusts / self.k_eta
-        motor_speeds = np.sign(motor_speeds) * np.sqrt(np.abs(motor_speeds))
+        motor_speeds = torch.sign(motor_speeds) * torch.sqrt(torch.abs(motor_speeds))
 
         # -----------------------
         # OUTPUTS
         # -----------------------
-        cmd_q = Rotation.from_matrix(R_des).as_quat()  # scipy format [x,y,z,w]
+        cmd_q_wxyz = self._rotmat_to_quat_wxyz(R_des)  # [w,x,y,z]
+        cmd_q = torch.stack(
+            [cmd_q_wxyz[1], cmd_q_wxyz[2], cmd_q_wxyz[3], cmd_q_wxyz[0]], dim=0
+        )  # scipy format [x,y,z,w]
 
         return {
-            "cmd_motor_speeds": motor_speeds,
-            "cmd_motor_thrusts": rotor_thrusts,
-            "cmd_thrust": u1,
-            "cmd_moment": u2,
-            "cmd_q": cmd_q,
-            "cmd_w": cmd_w,
-            "cmd_v": -self.kp_vel * pos_err + flat["x_dot"],
-            "cmd_acc": F_des / self.mass,
+            "cmd_motor_speeds": motor_speeds,  # torch
+            "cmd_motor_thrusts": rotor_thrusts,  # torch
+            "cmd_thrust": u1,  # torch scalar
+            "cmd_moment": u2,  # torch
+            "cmd_q": cmd_q,  # torch
+            "cmd_w": cmd_w,  # torch
+            "cmd_v": (-self.kp_vel * pos_err + x_dot_ref),
+            "cmd_acc": (F_des / self.mass),
         }
 
     def action(
@@ -352,40 +466,36 @@ class SE3Control(object):
         normlize the ctrl output to action space
         """
         # -------- thrust normlize --------
+        # ensure tensors on device
+        cmd_thrust = torch.as_tensor(control["cmd_thrust"], device=device).float()
+        cmd_w = torch.as_tensor(control["cmd_w"], device=device).float()
+        cmd_q = torch.as_tensor(control["cmd_q"], device=device).float()
         min_t = flight_config["min_t"]
         max_t = flight_config["max_t"]
-
-        thrust_norm = (control["cmd_thrust"] - min_t) / (max_t - min_t)
+        thrust_norm = (cmd_thrust - min_t) / (max_t - min_t)
         thrust_norm = thrust_norm * 2.0 - 1.0
         if env_config["controller"] == "rate":
             # -------- rate normlize --------
-            wx, wy, wz = control["cmd_w"]
+            wx, wy, wz = cmd_w[0], cmd_w[1], cmd_w[2]
+            roll_norm = torch.clamp(wx / flight_config["max_roll_rate"], -1.0, 1.0)
+            pitch_norm = torch.clamp(wy / flight_config["max_pitch_rate"], -1.0, 1.0)
+            yaw_norm = torch.clamp(wz / flight_config["max_yaw_rate"], -1.0, 1.0)
 
-            roll_norm = wx / flight_config["max_roll_rate"]
-            pitch_norm = wy / flight_config["max_pitch_rate"]
-            yaw_norm = wz / flight_config["max_yaw_rate"]
-
-            roll_norm = np.clip(roll_norm, -1.0, 1.0)
-            pitch_norm = np.clip(pitch_norm, -1.0, 1.0)
-            yaw_norm = np.clip(yaw_norm, -1.0, 1.0)
-
-            # -------- action --------
-            action = np.array(
-                [roll_norm, pitch_norm, yaw_norm, thrust_norm], dtype=np.float32
+            action = torch.stack(
+                [roll_norm, pitch_norm, yaw_norm, thrust_norm]
             ).reshape(1, -1)
-
-            action_tensor = torch.from_numpy(action).to(device).float()
 
         elif env_config["controller"] == "angle":
             # -------- angle normlize --------
-            eulers = Rotation.from_quat(control["cmd_q"]).as_euler("xyz")
-            eulers = Rotation.from_quat(control["cmd_q"]).as_euler("xyz")
+            # keep external behavior: scipy expects [x,y,z,w]
+            from scipy.spatial.transform import Rotation
 
-            # -------- action --------
-            action_anger = np.hstack([eulers, thrust_norm]).reshape(1, -1)
-            action_tensor = torch.from_numpy(action_anger).to(device).float()
+            eulers = Rotation.from_quat(cmd_q.detach().cpu().numpy()).as_euler("xyz")
+            eulers = torch.as_tensor(eulers, device=device).float()
 
-        return action_tensor
+            action = torch.cat([eulers, thrust_norm.reshape(1)]).reshape(1, -1)
+
+        return action
 
 
 class BatchedSE3Control(object):

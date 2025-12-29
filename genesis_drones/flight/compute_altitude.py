@@ -144,8 +144,7 @@ def compute_altitude(vel, acc, zb, dz):
     return xb, yb, omega, dx, psi_info
 
 
-def _yaw_cmd(vel_cmd, acc_cmd, jerk_cmd):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def _yaw_cmd(vel_cmd, acc_cmd, jerk_cmd, device=None):
     G = torch.tensor([0.0, 0.0, -flight_config["g"]], device=device)
     # compute commands
     f_cmd = flight_config["weight"] * (acc_cmd - G)

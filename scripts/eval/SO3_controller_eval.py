@@ -71,10 +71,10 @@ def main():
     with torch.no_grad():
         for step in range(max_sim_step):
             state = {
-                "x": genesis_env.drone.odom.world_pos.cpu().numpy().flatten(),
-                "v": genesis_env.drone.odom.world_linear_vel.cpu().numpy().flatten(),
-                "q": genesis_env.drone.odom.body_quat.cpu().numpy().flatten(),
-                "w": genesis_env.drone.odom.body_ang_vel.cpu().numpy().flatten(),
+                "x": genesis_env.drone.odom.world_pos.flatten(),
+                "v": genesis_env.drone.odom.world_linear_vel.flatten(),
+                "q": genesis_env.drone.odom.body_quat.flatten(),
+                "w": genesis_env.drone.odom.body_ang_vel.flatten(),
             }
             if use_trajectory:
                 dt = env_config["dt"]
@@ -86,15 +86,17 @@ def main():
                 omega = 3
                 cx, cy, cz = 0.0, 0.0, 0.8  # center of the circle
                 x_ref, x_dot_ref, x_ddot_ref, x_dddot_ref, yaw, yaw_dot = (
-                    circular_trajectory(t, R, omega, (cx, cy, cz))
+                    circular_trajectory(
+                        t, R, omega, (cx, cy, cz), device, torch.float32
+                    )
                 )
             else:
-                x_ref = track_task.command_buf.squeeze().tolist()
-                x_dot_ref = [0, 0, 0]
-                x_ddot_ref = [0, 0, 0]
-                x_dddot_ref = [0, 0, 0]
-                yaw = 0.0
-                yaw_dot = 0.0
+                x_ref = track_task.command_buf.squeeze()
+                x_dot_ref = torch.zeros(3, device=device)
+                x_ddot_ref = torch.zeros(3, device=device)
+                x_dddot_ref = torch.zeros(3, device=device)
+                yaw = torch.tensor(0.0, device=device)
+                yaw_dot = torch.tensor(0.0, device=device)
 
             flat = {
                 "x": x_ref,
