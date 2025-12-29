@@ -14,7 +14,6 @@ vis_waypoints: True
 viewer_follow_drone: False
 show_cam_GUI: False
 fixed_init_pos: False
-use_trajectory: False
 # ======== depth cam params ========
 znear: 5.0 
 zfar: 0.1
