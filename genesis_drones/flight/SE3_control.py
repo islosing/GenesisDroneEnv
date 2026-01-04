@@ -316,7 +316,15 @@ class SE3Control(object):
         # Keep same behavior: rewrite state["q"] as scipy [x,y,z,w] for downstream if someone expects it
         if quat_format.lower() == "wxyz":
             # [w, x, y, z] -> [x, y, z, w]
-            q_xyzw = torch.stack([state["q"].reshape(4)[1], state["q"].reshape(4)[2], state["q"].reshape(4)[3], state["q"].reshape(4)[0]], dim=0)
+            q_xyzw = torch.stack(
+                [
+                    state["q"].reshape(4)[1],
+                    state["q"].reshape(4)[2],
+                    state["q"].reshape(4)[3],
+                    state["q"].reshape(4)[0],
+                ],
+                dim=0,
+            )
         elif quat_format.lower() == "xyzw":
             # already scipy format
             q_xyzw = state["q"].reshape(4)
@@ -358,13 +366,23 @@ class SE3Control(object):
             # fallback to classic SE3 direction + yaw
             b3_des = torch.tensor([0.0, 0.0, 1.0], dtype=self.dtype, device=self.device)
             c1 = torch.stack(
-                [torch.cos(flat["yaw"]), torch.sin(flat["yaw"]), torch.zeros_like(flat["yaw"])], dim=0
+                [
+                    torch.cos(flat["yaw"]),
+                    torch.sin(flat["yaw"]),
+                    torch.zeros_like(flat["yaw"]),
+                ],
+                dim=0,
             )
             b2 = self.normalize(torch.cross(b3_des, c1, dim=0))
             b1 = torch.cross(b2, b3_des, dim=0)
             R_des = torch.stack([b1, b2, b3_des], dim=1)
             w_des = torch.stack(
-                [torch.zeros_like(flat["yaw_dot"]), torch.zeros_like(flat["yaw_dot"]), flat["yaw_dot"]], dim=0
+                [
+                    torch.zeros_like(flat["yaw_dot"]),
+                    torch.zeros_like(flat["yaw_dot"]),
+                    flat["yaw_dot"],
+                ],
+                dim=0,
             )
         else:
             R_des, w_des = self._safe_hopf_attitude_and_omega(
@@ -380,13 +398,22 @@ class SE3Control(object):
             if R_des is None or w_des is None:
                 b3_des = zeta / zeta_norm
                 c1 = torch.stack(
-                    [torch.cos(flat["yaw"]), torch.sin(flat["yaw"]), torch.zeros_like(flat["yaw"])], dim=0
+                    [
+                        torch.cos(flat["yaw"]),
+                        torch.sin(flat["yaw"]),
+                        torch.zeros_like(flat["yaw"]),
+                    ],
+                    dim=0,
                 )
                 b2 = self.normalize(torch.cross(b3_des, c1, dim=0))
                 b1 = torch.cross(b2, b3_des, dim=0)
                 R_des = torch.stack([b1, b2, b3_des], dim=1)
                 w_des = torch.stack(
-                    [torch.zeros_like(flat["yaw_dot"]), torch.zeros_like(flat["yaw_dot"]), flat["yaw_dot"]],
+                    [
+                        torch.zeros_like(flat["yaw_dot"]),
+                        torch.zeros_like(flat["yaw_dot"]),
+                        flat["yaw_dot"],
+                    ],
                     dim=0,
                 )
 
