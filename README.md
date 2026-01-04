@@ -71,8 +71,11 @@ By following this tutorial, you’ll be able to train and evaluate a basic drone
 - Here we replace the high-level RL policy with a geometric **SO(3) controller**, and directly track the target using a classical controller.
 
 ```bash
-python scripts/eval/controller_eval.py
+python scripts/eval/SE3_controller_eval.py --use-trajectory
 ```
+
+> **Note:** Adding the `--use-trajectory` flag enables **trajectory tracking** mode; without this flag, it defaults to **waypoint mode**.
+
 The SO(3) controller implementation is based on the geometric control framework proposed in:
 
 [“Geometric tracking control of a quadrotor UAV on SE(3)”](https://ieeexplore.ieee.org/document/5717652)

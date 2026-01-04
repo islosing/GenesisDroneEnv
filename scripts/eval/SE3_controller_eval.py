@@ -5,7 +5,7 @@ import genesis as gs
 import numpy as np
 from genesis_drones.env.genesis_env import Genesis_env
 from genesis_drones.tasks.track_task import Track_task
-from genesis_drones.flight.SO3_control import SE3Control
+from genesis_drones.flight.SE3_control import SE3Control
 from genesis_drones.flight.flatness import compute_altitude
 
 
