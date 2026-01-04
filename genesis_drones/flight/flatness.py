@@ -1,8 +1,31 @@
 import torch
 import yaml
 
-with open("config/track_rl/flight.yaml", "r") as file:
-    flight_config = yaml.load(file, Loader=yaml.FullLoader)
+
+def compute_flatness(vel_cmd, acc_cmd, jerk_cmd, mass, g, max_roll_rate, device=None):
+    G = torch.tensor([0.0, 0.0, -g], device=device)
+
+    # --- Compute Commands ---
+
+    f_cmd = mass * (acc_cmd - G)
+
+    thrust_cmd = torch.norm(f_cmd)
+
+    zb_cmd = f_cmd / (thrust_cmd + 1e-6)
+
+    proj_cmd = torch.eye(3, device=device) - torch.outer(zb_cmd, zb_cmd)
+
+    dz_cmd = proj_cmd @ jerk_cmd / thrust_cmd
+
+    dz_mag_cmd = torch.norm(dz_cmd)
+
+    omega_xy_scale_cmd = torch.clamp(max_roll_rate / (dz_mag_cmd + 1e-2), max=1.0)
+    real_dz_cmd = dz_cmd * omega_xy_scale_cmd
+
+    xb_cmd, yb_cmd, omega_cmd, dx_cmd, psi_info_cmd = compute_altitude(
+        vel=vel_cmd, acc=acc_cmd, zb=zb_cmd, dz=real_dz_cmd
+    )
+    return thrust_cmd, omega_cmd
 
 
 def compute_altitude(vel, acc, zb, dz):
@@ -60,17 +83,6 @@ def compute_altitude(vel, acc, zb, dz):
     xb_cross_vel_xb_norm = torch.linalg.norm(xb_cross_vel_xb)
     sign = torch.sign((zb * xb_cross_vel_xb).sum()).clamp(min=-1.0, max=1.0)
     xb_dot_vel_xb = (xb * vel_x_b).sum()
-
-    # Old compute
-    # xb_dot_vel_xb = (xb * vel_x_b).sum() / vel_x_b_norm
-    # dxb_dot_vel_xb = (
-    #     torch.sum(vel_x_b * dx)
-    #     + torch.sum(xb * acc_x_b)
-    #     - xb_dot_vel_xb * acc_x_b_norm
-    # ) / vel_x_b_norm
-
-    # psi = sign * torch.acos(xb_dot_vel_xb)
-    # dpsi = -sign * (dxb_dot_vel_xb / torch.sqrt(1.0 - xb_dot_vel_xb * xb_dot_vel_xb).clamp_min(1e-6))
 
     # Update compute
     psi = sign * torch.atan2(xb_cross_vel_xb_norm, xb_dot_vel_xb)
@@ -142,22 +154,3 @@ def compute_altitude(vel, acc, zb, dz):
     omega = torch.stack([omega_x, omega_y, omega_z])
 
     return xb, yb, omega, dx, psi_info
-
-
-def _yaw_cmd(vel_cmd, acc_cmd, jerk_cmd, device=None):
-    G = torch.tensor([0.0, 0.0, -flight_config["g"]], device=device)
-    # compute commands
-    f_cmd = flight_config["weight"] * (acc_cmd - G)
-    thrust_cmd = torch.linalg.norm(f_cmd)
-    zb_cmd = f_cmd / (thrust_cmd + 1e-6)
-    proj_cmd = torch.eye(3).to(device) - torch.outer(zb_cmd, zb_cmd)
-    dz_cmd = proj_cmd @ jerk_cmd / thrust_cmd
-    dz_mag_cmd = torch.linalg.norm(dz_cmd)
-    omega_xy_scale_cmd = torch.clamp(
-        flight_config["max_roll_rate"] / (dz_mag_cmd + 1e-2), None, 1
-    )
-    real_dz_cmd = dz_cmd * omega_xy_scale_cmd
-    xb_cmd, yb_cmd, omega_cmd, dx_cmd, psi_info_cmd = compute_altitude(
-        vel=vel_cmd, acc=acc_cmd, zb=zb_cmd, dz=real_dz_cmd
-    )
-    return psi_info_cmd, omega_cmd
