@@ -74,7 +74,7 @@ By following this tutorial, you’ll be able to train and evaluate a basic drone
 python scripts/eval/SE3_controller_eval.py --use-trajectory
 ```
 
-> **Note:** Adding the `--use-trajectory` flag enables **trajectory tracking** mode; without this flag, it defaults to **waypoint mode**.
+- Adding the `--use-trajectory` flag enables **trajectory tracking** mode; without this flag, it defaults to **waypoint mode**.
 
 The SO(3) controller implementation is based on the geometric control framework proposed in:
 
