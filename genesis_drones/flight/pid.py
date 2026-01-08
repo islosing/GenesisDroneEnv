@@ -82,6 +82,10 @@ class PIDcontroller:
         self.pid_freq = config.get("pid_exec_freq", 60)     # no use
         self.base_rpm = config.get("base_rpm", 14468.429183500699)
         self.dT = 1 / self.pid_freq                         # no use
+        self.TWR = config.get("TWR", 3.3)
+        self.max_roll_rate=config.get("max_roll_rate", 10)   # degree/s
+        self.max_pitch_rate=config.get("max_pitch_rate", 10) # degree/s
+        self.max_yaw_rate=config.get("max_yaw_rate", 7)      # degree/s
         self.tpa_factor = 1
         self.tpa_rate = 0
         self.throttle_command = torch.zeros((self.num_envs, ), device=self.device, dtype=gs.tc_float)
@@ -117,7 +121,7 @@ class PIDcontroller:
            throttle + self.pid_output[:, 0] - self.pid_output[:, 1] + self.pid_output[:, 2],  # M4
         ], dim = 1)
         motor_outputs = torch.clamp(motor_outputs, min = 0.0, max = 1.0)
-        motor_outputs = torch.sqrt(motor_outputs * 3.3) * self.base_rpm   # convert to rpm command
+        motor_outputs = torch.sqrt(motor_outputs * self.TWR) * self.base_rpm   # convert to rpm command
         # TODO: read TWR from config
         return motor_outputs
 
@@ -162,7 +166,7 @@ class PIDcontroller:
         if action is None:
             self.body_set_point[:] = self.rc_command[:3] * 15   # max 15 rad/s
         else:
-            coeffs = torch.tensor([10.0, 10.0, 3.0], device=self.device) # 为 roll, pitch, yaw 设置不同的系数
+            coeffs = torch.tensor([self.max_roll_rate, self.max_pitch_rate, self.max_yaw_rate], device=self.device) # 为 roll, pitch, yaw 设置不同的系数
             self.body_set_point[:] = action[:, :3] * coeffs   # action is in rad/s, like [[roll, pitch, yaw, thrust]] if num_envs = 1  self.last_setpoint_error[:] = self.cur_setpoint_error
         self.cur_setpoint_error[:] = self.body_set_point - self.odom.body_ang_vel
         self.P_term_r[:] = (self.cur_setpoint_error * self.kp_r) * self.tpa_factor
