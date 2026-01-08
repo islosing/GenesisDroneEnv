@@ -1,0 +1,52 @@
+# quadrotor physical parameters
+
+arm_length: 0.12   # d
+
+inertia:
+  mass: 0.5
+  Ixx: 1.4e-3
+  Iyy: 1.4e-3
+  Izz: 1.4e-3
+  Ixy: 0.0
+  Iyz: 0.0
+  Ixz: 0.0
+
+geometry:
+  num_rotors: 4
+  rotor_pos:
+    r1: [ 0.70710678118,  0.70710678118, 0.0 ]
+    r2: [ 0.70710678118, -0.70710678118, 0.0 ]
+    r3: [ -0.70710678118, -0.70710678118, 0.0 ]
+    r4: [ -0.70710678118,  0.70710678118, 0.0 ]
+  rotor_directions: [1, -1, 1, -1]
+  rI: [0.0, 0.0, 0.0]
+
+aero:
+  c_Dx: 9.1785e-3
+  c_Dy: 9.1785e-3
+  c_Dz: 10.311e-3
+
+rotor:
+  k_eta: 1.28e-9
+  k_m: 7.94e-12
+  k_d: 1.02506e-6
+  k_z: 7.553e-7
+  k_h: 0.0
+  k_flap: 0.0
+
+motor:
+  tau_m: 0.005
+  rotor_speed_min: 0.0
+  rotor_speed_max: 210000.0
+  motor_noise_std: 0.0
+
+flight:
+  g: 9.81
+  omega_z_limit: 3
+  omega_xy_limit: 10
+
+gains:
+  kp_pos: [5.5, 5.5, 12.5]
+  kd_pos: [0.5, 0.5, 1.0]
+  kp_att: [30.44, 30.44, 4.44]
+  kd_att: [0.3, 0.3, 0.4]

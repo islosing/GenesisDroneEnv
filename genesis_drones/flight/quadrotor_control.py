@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import roma
+import yaml
 from scipy.spatial.transform import Rotation
 
 
@@ -14,45 +15,83 @@ class SE3Control(object):
          compute Hopf quantities in the stable chart, then flip back R_des and ω_des.
     """
 
-    def __init__(self, quad_params):
-        self.mass = quad_params['mass']
-        self.Ixx  = quad_params['Ixx']
-        self.Iyy  = quad_params['Iyy']
-        self.Izz  = quad_params['Izz']
-        self.Ixy  = quad_params['Ixy']
-        self.Ixz  = quad_params['Ixz']
-        self.Iyz  = quad_params['Iyz']
-        self.inertia = np.array([
-            [self.Ixx, self.Ixy, self.Ixz],
-            [self.Ixy, self.Iyy, self.Iyz],
-            [self.Ixz, self.Iyz, self.Izz]
-        ])
+    def __init__(self, yaml_path: str):
 
-        self.g = 9.81
+        with open(yaml_path, "r") as file:
+            cfg = yaml.load(file, Loader=yaml.FullLoader)
 
+        # =====================
+        # Inertia
+        # =====================
+        self.mass = cfg["inertia"]["mass"]
+        self.Ixx = cfg["inertia"]["Ixx"]
+        self.Iyy = cfg["inertia"]["Iyy"]
+        self.Izz = cfg["inertia"]["Izz"]
+        self.Ixy = cfg["inertia"]["Ixy"]
+        self.Ixz = cfg["inertia"]["Ixz"]
+        self.Iyz = cfg["inertia"]["Iyz"]
+
+        self.inertia = np.array(
+            [
+                [self.Ixx, self.Ixy, self.Ixz],
+                [self.Ixy, self.Iyy, self.Iyz],
+                [self.Ixz, self.Iyz, self.Izz],
+            ]
+        )
+
+        self.g = cfg["flight"]["g"]
+        self.omega_z_limit = cfg["flight"]["omega_z_limit"]
+        self.omega_xy_limit = cfg["flight"]["omega_xy_limit"]
+
+        # =====================
         # Gains
-        self.kp_pos = np.array([5.5, 5.5, 8.5])
-        self.kd_pos = np.array([0.5, 0.5, 0.5])
-        self.kp_att = 30.44
-        self.kd_att = 0.8
+        # =====================
+        self.kp_pos = np.array(cfg["gains"]["kp_pos"])
+        self.kd_pos = np.array(cfg["gains"]["kd_pos"])
+        self.kp_att = np.array(cfg["gains"]["kp_att"])
+        self.kd_att = np.array(cfg["gains"]["kd_att"])
         self.kp_vel = 0.1 * self.kp_pos
 
-        # Rotor/motor parameters
-        self.num_rotors = quad_params['num_rotors']
-        self.rotor_pos  = quad_params['rotor_pos']          # dict: key -> np.array([x,y,z])
-        self.rotor_dir  = quad_params['rotor_directions']   # (num_rotors,) (+1/-1)
-        self.k_eta      = quad_params['k_eta']
-        self.k_m        = quad_params['k_m']
+        # =====================
+        # Rotor geometry
+        # =====================
+        d = cfg["arm_length"]
 
+        self.num_rotors = cfg["geometry"]["num_rotors"]
+
+        self.rotor_pos = {
+            k: d * np.array(v, dtype=float)
+            for k, v in cfg["geometry"]["rotor_pos"].items()
+        }
+
+        self.rotor_dir = np.array(cfg["geometry"]["rotor_directions"], dtype=float)
+
+        # =====================
+        # Rotor / motor parameters
+        # =====================
+        self.k_eta = cfg["rotor"]["k_eta"]
+        self.k_m = cfg["rotor"]["k_m"]
+
+        # =====================
+        # Allocation matrix
+        # =====================
         k = self.k_m / self.k_eta
-        self.f_to_TM = np.vstack((
-            np.ones((1, self.num_rotors)),
-            np.hstack([
-                np.cross(self.rotor_pos[key], np.array([0.0, 0.0, 1.0]))[:2].reshape(-1, 1)
-                for key in self.rotor_pos
-            ]),
-            (k * self.rotor_dir).reshape(1, -1)
-        ))
+
+        self.f_to_TM = np.vstack(
+            (
+                np.ones((1, self.num_rotors)),
+                np.hstack(
+                    [
+                        np.cross(self.rotor_pos[key], np.array([0, 0, 1]))[:2].reshape(
+                            -1, 1
+                        )
+                        for key in self.rotor_pos
+                    ]
+                ),
+                (k * self.rotor_dir).reshape(1, -1),
+            )
+        )
+
         self.TM_to_f = np.linalg.inv(self.f_to_TM)
 
     # ------------------------
@@ -249,8 +288,8 @@ class SE3Control(object):
                 yaw=float(flat['yaw']),
                 yaw_dot=float(flat['yaw_dot']),
                 eps=1e-6,
-                yaw_rate_limit=3.0,   # rad/s
-                omega_limit=10.0      # rad/s
+                yaw_rate_limit=self.omega_z_limit,   # rad/s
+                omega_limit=self.omega_xy_limit      # rad/s
             )
             # ultra-safe fallback (should not happen)
             if R_des is None or w_des is None:
