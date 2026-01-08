@@ -104,32 +104,23 @@ class PIDcontroller:
 
 
     def mixer(self, action=None) -> torch.Tensor:
-
-
         throttle_rc = torch.clamp((self.rc_command[3] + self.throttle_command) * 3, 0.0, 3.0) * self.base_rpm
         if action is None:
             throttle = throttle_rc
         else:
-            throttle_action = torch.clamp(action[:, -1] * 3 + self.thrust_compensate, min=0.0, max=3.0) * self.base_rpm
-            throttle = throttle_rc + throttle_action
-            throttle_cmd = torch.clamp(action[:, -1], min=-1, max=1.0)
-            throttle = throttle_cmd * 0.5 + 0.5
-            throttle = torch.sqrt(throttle_cmd * 0.5 + 0.5)
-            print(throttle)
-        #throttle = torch.clamp(action[:, -1], min=0.0, max=1.0)
-        # self.pid_output[:] = torch.clip(self.pid_output[:], -3.0, 3.0)
+            throttle_action = torch.clamp(action[:, -1], min=-1, max=1.0)
+            throttle = (throttle_action + 1) / 2
         motor_outputs = torch.stack([
            throttle - self.pid_output[:, 0] - self.pid_output[:, 1] - self.pid_output[:, 2],  # M1
            throttle - self.pid_output[:, 0] + self.pid_output[:, 1] + self.pid_output[:, 2],  # M2
            throttle + self.pid_output[:, 0] + self.pid_output[:, 1] - self.pid_output[:, 2],  # M3
            throttle + self.pid_output[:, 0] - self.pid_output[:, 1] + self.pid_output[:, 2],  # M4
         ], dim = 1)
-        # print(torch.clamp(motor_outputs, min=0, max=1))
-        #return torch.clamp(motor_outputs, min=self.base_rpm*0.3, max=self.base_rpm * 3.5)  # size: tensor(num_envs, 4)
-        final_rpm = torch.clamp(motor_outputs*140000, min=0, max=140000)
-        print(final_rpm)
-        return torch.nan_to_num(final_rpm, nan=0.0)
-    
+        motor_outputs = torch.clamp(motor_outputs, min = 0.0, max = 1.0)
+        motor_outputs = torch.sqrt(motor_outputs * 3.3) * self.base_rpm   # convert to rpm command
+        # TODO: read TWR from config
+        return motor_outputs
+
     def pid_update_TpaFactor(self):
         if (self.rc_command[3] > 0.35):       # 0.35 is the tpa_breakpoint, the same as Betaflight, 
             if (self.rc_command[3] < 1.0): 
@@ -171,11 +162,11 @@ class PIDcontroller:
         if action is None:
             self.body_set_point[:] = self.rc_command[:3] * 15   # max 15 rad/s
         else:
-            coeffs = torch.tensor([10.0, 10.0, 7.0], device=self.device) # 为 roll, pitch, yaw 设置不同的系数
+            coeffs = torch.tensor([10.0, 10.0, 3.0], device=self.device) # 为 roll, pitch, yaw 设置不同的系数
             self.body_set_point[:] = action[:, :3] * coeffs   # action is in rad/s, like [[roll, pitch, yaw, thrust]] if num_envs = 1  self.last_setpoint_error[:] = self.cur_setpoint_error
         self.cur_setpoint_error[:] = self.body_set_point - self.odom.body_ang_vel
         self.P_term_r[:] = (self.cur_setpoint_error * self.kp_r) * self.tpa_factor
-        self.I_term_r[:] = torch.clamp(self.I_term_r + self.cur_setpoint_error * self.ki_r*0.01, -0.5, 0.5)
+        self.I_term_r[:] = torch.clamp(self.I_term_r + self.cur_setpoint_error * self.ki_r*0.01, -0.5, 0.5) # estimate
         self.D_term_r[:] = (self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_r * self.tpa_factor/0.01    
 
         self.pid_output[:] = (self.P_term_r + self.I_term_r + self.D_term_r)
@@ -192,7 +183,7 @@ class PIDcontroller:
             self.body_set_point[:] = -self.odom.body_euler * yaw_mask + self.rc_command[:3]  
         else:               # in RL mode
             self.body_set_point[:] = -self.odom.body_euler * yaw_mask + action[:, :3]  # action is in rad, like [[roll, pitch, yaw, thrust]] if num_envs = 1
-        self.last_setpoint_error[:] = self.cur_setpoint_error
+        # self.last_setpoint_error[:] = self.cur_setpoint_error
         self.cur_setpoint_error[:] = (self.body_set_point * 15 - self.odom.body_ang_vel)
         self.P_term_a[:] = (self.cur_setpoint_error[:] * self.kp_a) * self.tpa_factor
         self.I_term_a[:] = torch.clamp(self.I_term_a + self.cur_setpoint_error[:] * self.ki_a, -0.5, 0.5)

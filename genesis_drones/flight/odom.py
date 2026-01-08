@@ -1,6 +1,7 @@
 import time
 import torch
 import genesis as gs
+from math import sqrt
 from genesis.utils.geom import quat_to_xyz, transform_by_quat, inv_quat, transform_quat_by_quat
 
 # NOTE :IMU is not an odomtry, only has anglear_velocity and linear_accerleration
@@ -18,7 +19,7 @@ class Odom:
         self.body_linear_acc = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)        
         self.body_ang_vel = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.body_ang_acc = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
-        identity_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device, dtype=gs.tc_float)
+        identity_quat = torch.tensor([sqrt(2) / 2, 0.0, 0.0, sqrt(2) / 2], device=self.device, dtype=gs.tc_float)
         self.body_quat = identity_quat.unsqueeze(0).repeat(self.num_envs, 1)
         self.body_quat_inv = identity_quat.unsqueeze(0).repeat(self.num_envs, 1)
 
@@ -109,7 +110,7 @@ class Odom:
         self.body_linear_vel.index_fill_(0, reset_range, 0.0)
         self.body_linear_acc.index_fill_(0, reset_range, 0.0)
         self.body_ang_vel.index_fill_(0, reset_range, 0.0)
-        identity_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device, dtype=gs.tc_float)
+        identity_quat = torch.tensor([sqrt(2) / 2, 0.0, 0.0, sqrt(2) / 2], device=self.device, dtype=gs.tc_float)
         self.body_quat[reset_range] = rand_quat
         self.body_quat_inv[reset_range] = inv_quat(rand_quat)
         self.body_euler[:] = quat_to_xyz(self.body_quat, rpy=True)
