@@ -20,8 +20,8 @@ task:
 
   clip_actions: 1.0 
   target_thr: 0.1
-  episode_length_s: 15.0 
-  max_episode_length: 1500
+  episode_length_s: 30.0 
+  max_episode_length: 3000
   num_actions: 4                  # roll, pitch, yaw, thrust
   num_commands: 3                 # 3d position: x, y, z
 
