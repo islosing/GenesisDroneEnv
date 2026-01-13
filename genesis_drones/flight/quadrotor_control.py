@@ -300,7 +300,7 @@ class SE3Control(object):
                 b1 = np.cross(b2, b3_des)
                 R_des = np.stack([b1, b2, b3_des], axis=1)
                 w_des = np.array([0.0, 0.0, float(flat['yaw_dot'])], dtype=float)
-        w_des = omega_cmd  # override omega command
+        # w_des = omega_cmd  # override omega command
         # -----------------------
         # 3. ATTITUDE PD CONTROL
         # -----------------------
@@ -312,7 +312,7 @@ class SE3Control(object):
               + np.cross(state['w'], self.inertia @ state['w']))
 
         # body-rate command (optional)
-        cmd_w = -self.kp_att * att_err - self.kd_att * w_err
+        cmd_w = w_des -self.kp_att * att_err - self.kd_att * w_err
 
         # -----------------------
         # 4. MOTOR ALLOCATION
