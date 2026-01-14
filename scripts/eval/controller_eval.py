@@ -5,7 +5,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 from genesis_drones.env.genesis_env import Genesis_env
 from genesis_drones.tasks.track_task import Track_task
-from genesis_drones.flight.quadrotor_control import SE3Control
+from genesis_drones.flight.SE3_controller import SE3Control
 from genesis_drones.flight.minco_params import quad_params
 from rsl_rl.runners import OnPolicyRunner
 
