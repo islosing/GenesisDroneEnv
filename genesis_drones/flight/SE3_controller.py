@@ -345,7 +345,7 @@ class TorchSE3Control(object):
     Fully differentiable and GPU-accelerated.
     """
 
-    def __init__(self, yaml_path: str, device='cuda:0'):
+    def __init__(self, yaml_path: str, device):
         with open(yaml_path, "r") as file:
             cfg = yaml.load(file, Loader=yaml.FullLoader)
         
@@ -354,7 +354,7 @@ class TorchSE3Control(object):
         # =====================
         # Inertia (3, 3)
         # =====================
-        self.mass = float(cfg["inertia"]["mass"])
+        self.nominal_mass = float(cfg["inertia"]["mass"])
         
         # Construct Inertia Matrix directly as Tensor
         Ixx = cfg["inertia"]["Ixx"]
@@ -364,7 +364,7 @@ class TorchSE3Control(object):
         Ixz = cfg["inertia"]["Ixz"]
         Iyz = cfg["inertia"]["Iyz"]
 
-        self.inertia = torch.tensor(
+        self.nominal_inertia = torch.tensor(
             [
                 [Ixx, Ixy, Ixz],
                 [Ixy, Iyy, Iyz],
@@ -379,12 +379,17 @@ class TorchSE3Control(object):
         # =====================
         # Gains
         # =====================
-        self.kp_pos = torch.tensor(cfg["gains"]["kp_pos"], device=self.device)
-        self.kd_pos = torch.tensor(cfg["gains"]["kd_pos"], device=self.device)
-        self.kp_att = torch.tensor(cfg["gains"]["kp_att"], device=self.device)
-        self.kd_att = torch.tensor(cfg["gains"]["kd_att"], device=self.device)
-        self.kp_vel = 0.1 * self.kp_pos
-
+        self.nominal_kp_pos = torch.tensor(cfg["gains"]["kp_pos"], device=self.device)
+        self.nominal_kd_pos = torch.tensor(cfg["gains"]["kd_pos"], device=self.device)
+        self.nominal_kp_att = torch.tensor(cfg["gains"]["kp_att"], device=self.device)
+        self.nominal_kd_att = torch.tensor(cfg["gains"]["kd_att"], device=self.device)
+        # self.kp_vel = 0.1 * self.kp_pos
+        self.mass = torch.tensor([self.nominal_mass], device=self.device)
+        self.inertia = self.nominal_inertia.unsqueeze(0) # (1, 3, 3)
+        self.kp_pos = self.nominal_kp_pos.unsqueeze(0)   # (1, 3)
+        self.kd_pos = self.nominal_kd_pos.unsqueeze(0)
+        self.kp_att = self.nominal_kp_att.unsqueeze(0)
+        self.kd_att = self.nominal_kd_att.unsqueeze(0)
         # =====================
         # Allocation
         # =====================
@@ -568,6 +573,47 @@ class TorchSE3Control(object):
         w_des[:, 2] = w_des[:, 2] * flip_sign
 
         return R_des, w_des, q_scipy
+
+    def randomize_params(self, num_envs, mass_std=0.05, pid_scale_range=(0.8, 1.2)):
+            """
+            num_envs: 环境数量 (Batch Size)
+            mass_std: 质量高斯分布的标准差 (kg)
+            pid_scale_range: PID 参数缩放的均匀分布范围 (min, max)
+            """
+            
+            # 1. 质量随机化 (高斯分布)
+            # shape: (B, 1) 用来支持广播
+            mass_noise = torch.normal(mean=0.0, std=mass_std, size=(num_envs, 1), device=self.device)
+            self.mass = self.nominal_mass + mass_noise
+            
+            # 安全截断，防止质量 <= 0
+            self.mass = torch.clamp(self.mass, min=0.01)
+
+            # 2. 惯性矩阵随机化
+            # 物理上，惯性矩阵通常随质量线性缩放 J_new = J_nom * (m_new / m_nom)
+            mass_ratio = self.mass / self.nominal_mass # (B, 1)
+            
+            # nominal_inertia: (3, 3) -> (1, 3, 3)
+            # mass_ratio: (B, 1) -> (B, 1, 1)
+            # 结果: (B, 3, 3)
+            self.inertia = self.nominal_inertia.unsqueeze(0) * mass_ratio.unsqueeze(-1)
+
+            # 3. PID 参数随机化 (均匀分布缩放系数)
+            # 生成随机系数矩阵 (B, 3) 或者 (B, 1)
+            low, high = pid_scale_range
+            
+            def get_rand_gains(nominal_gain):
+                # 随机系数 shape: (B, 3) -> 针对 x,y,z 轴独立随机
+                scale = torch.rand((num_envs, 3), device=self.device) * (high - low) + low
+                return nominal_gain.unsqueeze(0) * scale # (1, 3) * (B, 3) -> (B, 3)
+
+            self.kp_pos = get_rand_gains(self.nominal_kp_pos)
+            self.kd_pos = get_rand_gains(self.nominal_kd_pos)
+            self.kp_att = get_rand_gains(self.nominal_kp_att)
+            self.kd_att = get_rand_gains(self.nominal_kd_att)
+            
+            # kp_vel 通常是 kp_pos 的倍数，保持该关系
+            self.kp_vel = 0.1 * self.kp_pos
 
     # ============================================================
     #                       MAIN UPDATE
