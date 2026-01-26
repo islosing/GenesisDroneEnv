@@ -48,6 +48,9 @@ class Track_task(VecEnv):
         self.cur_pos_error = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.last_pos_error = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.actions = torch.zeros((self.num_envs, self.num_actions), device=self.device, dtype=gs.tc_float)
+        self.actions_buffer = torch.zeros((self.num_envs, self.num_actions), device=self.device, dtype=gs.tc_float)
+        self.actions_buffer_1 = torch.zeros((self.num_envs, self.num_actions), device=self.device, dtype=gs.tc_float)
+        self.actions_buffer_2 = torch.zeros((self.num_envs, self.num_actions), device=self.device, dtype=gs.tc_float)
         self.last_actions = torch.zeros_like(self.actions)
 
         # infos
@@ -146,7 +149,13 @@ class Track_task(VecEnv):
             self.cur_iter = self.cur_iter + 1
 
         self.actions = torch.clip(action, -self.task_config["clip_actions"], self.task_config["clip_actions"])
+        
         exec_actions = self.actions
+
+        # exec_actions = self.actions_buffer_1
+        # # self.actions_buffer_2[:] = self.actions_buffer_1[:]
+        # self.actions_buffer_1[:] = self.actions_buffer[:]
+        # self.actions_buffer[:] = self.actions[:]
         
         if self.genesis_env.target is not None:
             self.genesis_env.target.set_pos(self.command_buf, zero_velocity=True, envs_idx=list(range(self.num_envs)))
