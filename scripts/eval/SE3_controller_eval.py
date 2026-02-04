@@ -5,7 +5,7 @@ import genesis as gs
 import numpy as np
 from genesis_drones.env.genesis_env import Genesis_env
 from genesis_drones.tasks.track_task import Track_task
-from genesis_drones.flight.SE3_control import SE3Control
+from genesis_drones.flight.SE3_control import TorchSE3Control
 from genesis_drones.flight.flatness import compute_altitude
 
 
@@ -86,6 +86,51 @@ def yaw_cmd(vel_cmd, acc_cmd, jerk_cmd, device=None):
     return psi_info_cmd, omega_cmd
 
 
+def controller_action_convert(control, flight_config, env_config, device):
+    """
+    normlize the ctrl output to action space
+    """
+    # ensure tensors on device
+    cmd_thrust = control["cmd_thrust"]  # (B,)
+    cmd_w = control["cmd_w"]  # (B, 3)
+    cmd_q = control["cmd_q"]  # (B, 4) [x,y,z,w]
+
+    min_t = flight_config["min_t"]
+    max_t = flight_config["max_t"]
+
+    # -------- thrust normalize --------
+    thrust_norm = (cmd_thrust - min_t) / (max_t - min_t)
+    thrust_norm = thrust_norm * 2.0 - 1.0
+
+    if env_config["controller"] == "rate":
+        # -------- rate normalize --------
+        # cmd_w is (B, 3) -> roll, pitch, yaw rates
+        wx = cmd_w[:, 0]
+        wy = cmd_w[:, 1]
+        wz = cmd_w[:, 2]
+
+        roll_norm = torch.clamp(wx / flight_config["max_roll_rate"], -1.0, 1.0)
+        pitch_norm = torch.clamp(wy / flight_config["max_pitch_rate"], -1.0, 1.0)
+        yaw_norm = torch.clamp(wz / flight_config["max_yaw_rate"], -1.0, 1.0)
+
+        # Stack into (B, 4) -> [roll, pitch, yaw, thrust]
+        action = torch.stack([roll_norm, pitch_norm, yaw_norm, thrust_norm], dim=1)
+
+    elif env_config["controller"] == "angle":
+        # -------- angle normalize --------
+        # cmd_q is already in Scipy [x,y,z,w] from TorchSE3Control
+        from scipy.spatial.transform import Rotation
+
+        # Rotation expects numpy on CPU
+        q_np = cmd_q.detach().cpu().numpy()
+        eulers_np = Rotation.from_quat(q_np).as_euler("xyz")
+        eulers = torch.as_tensor(eulers_np, device=device).float()  # (B, 3)
+
+        action = torch.cat([eulers, thrust_norm.view(-1, 1)], dim=1)  # (B, 4)
+
+    return action
+
+
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument(
@@ -128,16 +173,17 @@ def main():
         train_config=train_config,
         num_envs=1,
     )
-    controller = SE3Control("config/controller_track/minco_params.yaml")
+    # controller = SE3Control("config/controller_track/minco_params.yaml")
+    controller = TorchSE3Control("config/controller_track/minco_params.yaml", device)
+    controller.randomize_params(num_envs=1, mass_std=0.0, pid_scale_range=(1.0, 1.0))
     obs = track_task.reset()  # tensordict
-
     with torch.no_grad():
         for step in range(max_sim_step):
             state = {
-                "x": genesis_env.drone.odom.world_pos.flatten(),
-                "v": genesis_env.drone.odom.world_linear_vel.flatten(),
-                "q": genesis_env.drone.odom.body_quat.flatten(),
-                "w": genesis_env.drone.odom.body_ang_vel.flatten(),
+                "x": genesis_env.drone.odom.world_pos.view(1, 3),
+                "v": genesis_env.drone.odom.world_linear_vel.view(1, 3),
+                "q": genesis_env.drone.odom.body_quat.view(1, 4),
+                "w": genesis_env.drone.odom.body_ang_vel.view(1, 3),
             }
             if use_trajectory:
                 dt = env_config["dt"]
@@ -154,7 +200,7 @@ def main():
                     )
                 )
             else:
-                x_ref = track_task.command_buf.squeeze()
+                x_ref = track_task.command_buf.view(1, 3)
                 x_dot_ref = torch.zeros(3, device=device)
                 x_ddot_ref = torch.zeros(3, device=device)
                 x_dddot_ref = torch.zeros(3, device=device)
@@ -162,15 +208,15 @@ def main():
                 yaw_dot = torch.tensor(0.0, device=device)
 
             flat = {
-                "x": x_ref,
-                "x_dot": x_dot_ref,
-                "x_ddot": x_ddot_ref,
-                "x_dddot": x_dddot_ref,
-                "yaw": yaw,
-                "yaw_dot": yaw_dot,
+                "x": x_ref.view(1, 3),
+                "x_dot": x_dot_ref.view(1, 3),
+                "x_ddot": x_ddot_ref.view(1, 3),
+                "x_dddot": x_dddot_ref.view(1, 3),
+                "yaw": yaw.view(1, 1),
+                "yaw_dot": yaw_dot.view(1, 1),
             }
-            ctrl = controller.update(0, state, flat, None, "wxyz")
-            action = controller.action(
+            ctrl = controller.update(0, state, flat, None ,"wxyz")
+            action = controller_action_convert(
                 control=ctrl,
                 flight_config=flight_config,
                 env_config=env_config,

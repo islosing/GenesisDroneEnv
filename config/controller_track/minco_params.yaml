@@ -42,11 +42,11 @@ motor:
 
 flight:
   g: 9.81
-  omega_z_limit: 7
+  omega_z_limit: 3
   omega_xy_limit: 10
 
 gains:
-  kp_pos: [16, 16, 16]
-  kd_pos: [5, 5, 7]
-  kp_att: 20.44
-  kd_att: 0.1
+  kp_pos: [6, 6, 10.5]
+  kd_pos: [1.0, 1.0, 1.0]
+  kp_att: 25.44
+  kd_att: 0.8

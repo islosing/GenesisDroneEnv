@@ -68,7 +68,7 @@ inertia_matrix:       # no use
   - [0.0,    0.0,     0.0,     1.0]
 max_roll_rate: 10    # degree/s
 max_pitch_rate: 10   # degree/s
-max_yaw_rate: 7    # degree/s
+max_yaw_rate: 3    # degree/s
 # =========== mavlink_param =============
 USB_path: "/dev/ttyUSB0"
 baudrate: 2000000
