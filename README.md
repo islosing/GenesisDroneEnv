@@ -22,6 +22,10 @@
 
 **Genesis Drone Env** provides a robust playground for drone research, ranging from Reinforcement Learning (RL) to classical Geometric Control. Included in the **official** [Genesis](https://github.com/Genesis-Embodied-AI/Genesis) ecosystem, this repository serves as a foundation for developing complex aerial robotics algorithms.
 
+## 🔖 Related Work (Our Work)
+
+1. [FLARE: Agile Flights for Quadrotor Cable-Suspended Payload Systems via Reinforcement Learning](https://arxiv.org/abs/2508.09797) (Accepted by **IEEE RA-L**)
+
 ### ✨ Features
 - **🚀 Reinforcement Learning**: Ready-to-use environments for training tracking policies (PPO included).
 - **📐 Geometric Control**: Concise implementation of SO(3)/SE(3) controllers for precise trajectory tracking.
