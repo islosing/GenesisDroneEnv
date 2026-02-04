@@ -4,10 +4,10 @@ import shutil
 import os
 import yaml
 import torch
-from flight.pid import PIDcontroller
+from genesis_drones.controllers import PIDcontroller
 from flight.odom import Odom
 from flight.mavlink_sim import rc_command
-from env.genesis_env import Genesis_env
+from genesis_drones.envs.genesis_env import Genesis_env
 from flight.mavlink_sim import start_mavlink_receive_thread
 from algorithms.rl.tasks.track_task import Track_task
 from rsl_rl.runners import OnPolicyRunner

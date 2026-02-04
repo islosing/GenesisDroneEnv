@@ -4,7 +4,7 @@ import roma
 import yaml
 
 
-class TorchSE3Control(object):
+class SE3Controller(object):
     """
     PyTorch-based Vectorized SE3 Controller.
     Fully differentiable and GPU-accelerated.

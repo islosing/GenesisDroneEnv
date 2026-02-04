@@ -3,9 +3,9 @@ import torch
 import yaml
 import genesis as gs
 import numpy as np
-from genesis_drones.env.genesis_env import Genesis_env
+from genesis_drones.envs.genesis_env import Genesis_env
 from genesis_drones.tasks.track_task import Track_task
-from genesis_drones.flight.SE3_control import TorchSE3Control
+from genesis_drones.controllers import SE3Controller
 from genesis_drones.flight.flatness import compute_altitude
 
 
@@ -191,8 +191,7 @@ def main():
         train_config=train_config,
         num_envs=1,
     )
-    # controller = SE3Control("config/controller_track/minco_params.yaml")
-    controller = TorchSE3Control("config/controller_track/minco_params.yaml", device)
+    controller = SE3Controller("config/controller_track/minco_params.yaml", device)
     controller.randomize_params(num_envs=1, mass_std=0.0, pid_scale_range=(1.0, 1.0))
     obs = track_task.reset()  # tensordict
     with torch.no_grad():

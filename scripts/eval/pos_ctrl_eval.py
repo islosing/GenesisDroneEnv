@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 import genesis as gs
 import warp as wp
-from env.genesis_env import Genesis_env
+from genesis_drones.envs.genesis_env import Genesis_env
 from flight.mavlink_sim import start_mavlink_receive_thread
 
 def gs_rand_float(lower, upper, device="cuda"):
