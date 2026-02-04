@@ -1,7 +1,7 @@
 import numpy as np
 import torch
-import roma
 import yaml
+from typing import Union
 
 
 class SE3Controller(object):
@@ -17,9 +17,13 @@ class SE3Controller(object):
          compute Hopf quantities in the stable chart, then flip back R_des and ω_des.
     """
 
-    def __init__(self, yaml_path: str, device):
-        with open(yaml_path, "r") as file:
-            cfg = yaml.load(file, Loader=yaml.FullLoader)
+    def __init__(self, config: Union[str, dict], device):
+        # Load config
+        if isinstance(config, dict):
+            cfg = config
+        elif isinstance(config, str):
+            with open(config, "r") as file:
+                cfg = yaml.load(file, Loader=yaml.FullLoader)
 
         self.device = device
 

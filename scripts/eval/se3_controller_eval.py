@@ -166,13 +166,13 @@ def main():
     max_sim_step = 10000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    with open("config/track_rl/genesis_env.yaml", "r") as file:
+    with open("config/se3_controller_eval/genesis_env.yaml", "r") as file:
         env_config = yaml.load(file, Loader=yaml.FullLoader)
 
-    with open("config/track_rl/rl_env.yaml", "r") as file:
+    with open("config/se3_controller_eval/rl_env.yaml", "r") as file:
         rl_config = yaml.load(file, Loader=yaml.FullLoader)
 
-    with open("config/track_rl/flight.yaml", "r") as file:
+    with open("config/se3_controller_eval/flight.yaml", "r") as file:
         flight_config = yaml.load(file, Loader=yaml.FullLoader)
 
     task_config = rl_config["task"]
@@ -191,7 +191,7 @@ def main():
         train_config=train_config,
         num_envs=1,
     )
-    controller = SE3Controller("config/controller_track/minco_params.yaml", device)
+    controller = SE3Controller(flight_config["se3_control"], device)
     controller.randomize_params(num_envs=1, mass_std=0.0, pid_scale_range=(1.0, 1.0))
     obs = track_task.reset()  # tensordict
     with torch.no_grad():
