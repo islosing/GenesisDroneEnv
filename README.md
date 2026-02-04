@@ -1,78 +1,134 @@
-# Genesis Drone Environment
-This repository contains example RL environment for Drones. This project has been included in the **official** [Genesis](https://github.com/Genesis-Embodied-AI/Genesis) repository and [documentation](https://genesis-world.readthedocs.io/en/latest/user_guide/getting_started/hover_env.html). This repository will continue to provide examples and may be **updated with more complex features** in the future.
+<div align="center">
 
-## Installations
+# 🚁 Genesis Drone Env
 
-It's recommended to use a virtual environment, such as conda:
+**High-Fidelity Drone Simulation Environment based on [Genesis](https://github.com/Genesis-Embodied-AI/Genesis)**
+
+[**Documentation**](https://genesis-world.readthedocs.io/en/latest/user_guide/getting_started/hover_env.html) | [**Genesis Engine**](https://github.com/Genesis-Embodied-AI/Genesis)
+
+---
+
+<p align="center">
+  <a href="#-features">Features</a> •
+  <a href="#-installation">Installation</a> •
+  <a href="#-demos--usage">Demos</a> •
+  <a href="#-hardware-in-the-loop-fpv">FPV Hardware</a> •
+  <a href="#-citation">Citation</a>
+</p>
+
+</div>
+
+## 📖 Introduction
+
+**Genesis Drone Env** provides a robust playground for drone research, ranging from Reinforcement Learning (RL) to classical Geometric Control. Included in the **official** [Genesis](https://github.com/Genesis-Embodied-AI/Genesis) ecosystem, this repository serves as a foundation for developing complex aerial robotics algorithms.
+
+### ✨ Features
+- **🚀 Reinforcement Learning**: Ready-to-use environments for training tracking policies (PPO included).
+- **📐 Geometric Control**: Concise implementation of SO(3)/SE(3) controllers for precise trajectory tracking.
+- **🎮 Hardware-in-the-Loop (HIL)**: Connect your real RC transmitter via Flight Controller (FCU) to fly FPV in the simulator.
+- **⚙️ Highly Configurable**: Easy tuning of flight parameters, physics settings, and reward functions via YAML.
+
+---
+
+## 💻 Installation
+
+It is recommended to use a virtual environment (conda) to manage dependencies.
 
 ```bash
+# 1. Create environment
 conda create -n genesis_drone python=3.11 # Requires Python >= 3.10
 conda activate genesis_drone
-```
 
-Ensure you have installed the latest version of [Genesis](https://github.com/Genesis-Embodied-AI/Genesis). And then install the repo:
+# 2. Install Genesis (Ensure you have the latest version)
+# Visit https://github.com/Genesis-Embodied-AI/Genesis for detailed instructions
 
-```bash
+# 3. Clone and install this repository
 git clone https://github.com/KafuuChikai/GenesisDroneEnv.git
+cd GenesisDroneEnv
 pip install -e .
 ```
 
-## Configs
-Paramters are not good enough, you can tune parameters as follows:
-- Controllers params in `config/*/flight.yaml`
-- Gnesis environment in `config/*/genesis_env.yaml`
-- RL config in `config/*/rl_env.yaml`
+---
 
-## Demos
+## 🎬 Demos & Usage
 
-### 1. RL tracking task
-#### Evaluate the pretrained model
-``` bash
+### 1. RL Tracking Task
+Train or evaluate a policy to track a moving target.
+
+#### Evaluate Pretrained Model:
+```bash
 python scripts/eval/track_eval.py
 ```
-Then you will see:  
-<img src="docs/quick.gif" alt="FPV" width="90%"/>
+<div align="center"> <img src="docs/quick.gif" alt="RL Tracking" width="80%"/> </div>
 
-#### Use the provided training script to start training the policy.
-``` bash
+#### Train Your Own Policy:
+```bash
 python scripts/train/track_train.py 
 ```
-**NOTE** Training converges around 200th step, reward scale in ```config/track_rl/rl_env.yaml``` need to be fine tuned
 
-### 2. Use RC control FPV in Genesis
-- Flash HEX file in `genesis_drones/utils/BF_firmware_forRC/betaflight_4.4.0_STM32H743_forRC.hex` to your FCU (for STM32H743)
-- Use Type-c to power the FCU, and connect UART port (on FCU) and USB port (on PC) through USB2TTL module, like:
-- <img src="./docs/hardware.png"  width="300" /> <br>
-- Connect the FC and use mavlink to send FC_data from FCU to PC
-- Use `ls /dev/tty*` to check the port id and modified param `USB_path` in `./config/*/flight.yaml`
-- Do this since the default mavlink frequence for rc_channle is too low
-- Connect the FC and use mavlink to send FC_data from FCU to PC
-- Use FC to control the sim drone by:
-``` bash
-python scripts/eval/rc_FPV_eval.py.py
-```
-<img src="docs/FPV.gif" alt="FPV" width="100%"/>
+> **Note:** Training typically converges around the 200th step. You can fine-tune the reward scale in `rl_env.yaml`.
 
-### 3. SE(3) controller test
-- Here we replace the high-level RL policy with a geometric **SE(3) controller**, and directly track the target using a classical controller.
+### 2. SE(3) Geometric Controller
+Replace the neural network with a classical geometric controller for precise maneuvers.
 
+#### Run Trajectory Tracking:
 ```bash
 python scripts/eval/se3_controller_eval.py --use-trajectory
 ```
 
-- Adding the `--use-trajectory` flag enables **trajectory tracking** mode; without this flag, it defaults to **waypoint mode**.
+> **Tips:**
+> - `--use-trajectory`: Enables circle trajectory tracking.
+> - Without the flag, it defaults to Waypoint Mode.
 
-The SE(3) controller implementation is based on the geometric control framework proposed in:
+The controller implements the framework proposed in:
+- [Geometric tracking control of a quadrotor UAV on SE(3)](https://ieeexplore.ieee.org/document/5717652)
+- [Control of Quadrotors Using the Hopf Fibration on SO(3)](https://link.springer.com/chapter/10.1007/978-3-030-28619-4_20)
 
-[“Geometric tracking control of a quadrotor UAV on SE(3)”](https://ieeexplore.ieee.org/document/5717652)
+### 3. 🎮 Hardware-in-the-Loop (FPV)
+Fly the simulated drone using your real Radio Controller (RC) via a Flight Controller (FCU) bridge.
 
-In addition, the attitude control law incorporates concepts from Hopf fibration–based control, following:
+<div align="center"> <img src="docs/FPV.gif" alt="FPV Flight" width="80%"/> </div>
 
-[“Control of Quadrotors Using the Hopf Fibration on SO(3)”](https://link.springer.com/chapter/10.1007/978-3-030-28619-4_20)
-## Acknowledgement
+**Hardware Setup**
 
-This repository is inspired by the following work:
+<div align="center"> <img src="./docs/hardware.png" alt="Hardware Connection" width="80%" /> </div>
 
-1. [Champion-level drone racing using deep reinforcement learning (Nature 2023)](https://www.nature.com/articles/s41586-023-06419-4.pdf)
+1. **Prepare FCU**: Use an **STM32H743** FCU.
+2. **Flash Firmware**: Flash the custom HEX file: [betaflight_4.4.0_STM32H743_forRC](genesis_drones/utils/BF_firmware_forRC/betaflight_4.4.0_STM32H743_forRC.hex)
+3. **Connect**:
+   - Power the FCU via USB-C.
+   - Connect the FCU's UART port to your PC using a **USB-to-TTL** module.
 
-We acknowledge the contributions of these and future works that inspire and enhance the development of this repository.
+**Software Configuration**
+
+1. Check your serial port ID (e.g., `/dev/ttyUSB0`) using:
+```bash
+ls /dev/tty*
+```
+
+2. Update the `USB_path` parameter in flight.yaml (or relevant config) to match your port.
+
+**Run FPV Mode**
+```bash
+python scripts/eval/rc_FPV_eval.py
+```
+
+## 🛠 Configuration
+
+Customize the simulation to fit your needs by editing the YAML files in the `config/` directory:
+
+| Config Type | File Path | Description |
+| :--- | :--- | :--- |
+| **Flight Dynamics** | `config/*/flight.yaml` | PID gains, physical properties (mass, inertia). |
+| **Environment** | `config/*/genesis_env.yaml` | Physics engine settings, rendering, scene setup. |
+| **RL Hyperparams** | `config/*/rl_env.yaml` | Reward functions, observation space, training steps. |
+
+---
+
+## 🤝 Acknowledgement
+
+This repository is inspired by the following ground-breaking work:
+
+> [**Champion-level drone racing using deep reinforcement learning**](https://www.nature.com/articles/s41586-023-06419-4.pdf) (Nature 2023)
+
+We acknowledge the contributions of the open-source community that make this project possible.
