@@ -21,11 +21,11 @@ pip install -e .
 Paramters are not good enough, you can tune parameters as follows:
 - Controllers params in `config/*/flight.yaml`
 - Gnesis environment in `config/*/genesis_env.yaml`
-- RL config in `config/track_rl/rl_env.yaml`
+- RL config in `config/*/rl_env.yaml`
 
 ## Demos
 
-### 1. An RL tracking task
+### 1. RL tracking task
 #### Evaluate the pretrained model
 ``` bash
 python scripts/eval/track_eval.py
@@ -40,7 +40,7 @@ python scripts/train/track_train.py
 **NOTE** Training converges around 200th step, reward scale in ```config/track_rl/rl_env.yaml``` need to be fine tuned
 
 ### 2. Use RC control FPV in Genesis
-- Flash HEX file in `./utils/modified_BF_firmware/betaflight_4.4.0_STM32H743_forRC.hex` to your FCU (for STM32H743)
+- Flash HEX file in `genesis_drones/utils/BF_firmware_forRC/betaflight_4.4.0_STM32H743_forRC.hex` to your FCU (for STM32H743)
 - Use Type-c to power the FCU, and connect UART port (on FCU) and USB port (on PC) through USB2TTL module, like:
 - <img src="./docs/hardware.png"  width="300" /> <br>
 - Connect the FC and use mavlink to send FC_data from FCU to PC
@@ -53,22 +53,8 @@ python scripts/eval/rc_FPV_eval.py.py
 ```
 <img src="docs/FPV.gif" alt="FPV" width="100%"/>
 
-### 3. Position controller test
-- Try to get the target with no planning, thus **has poor performance**
-``` bash
-python scripts/eval/pos_ctrl_eval.py
-```
-
-To monitor the training process, you can use `TensorBoard`, reopen and terminal and activate the same conda env, then run:
-
-```bash
-bash scripts/shell/launch_tb.bash
-```
-
-By following this tutorial, you’ll be able to train and evaluate a basic drone target tracking policy using Genesis. Have fun and enjoy!
-
-### 4. SO(3) controller test
-- Here we replace the high-level RL policy with a geometric **SO(3) controller**, and directly track the target using a classical controller.
+### 3. SE(3) controller test
+- Here we replace the high-level RL policy with a geometric **SE(3) controller**, and directly track the target using a classical controller.
 
 ```bash
 python scripts/eval/se3_controller_eval.py --use-trajectory
@@ -76,7 +62,7 @@ python scripts/eval/se3_controller_eval.py --use-trajectory
 
 - Adding the `--use-trajectory` flag enables **trajectory tracking** mode; without this flag, it defaults to **waypoint mode**.
 
-The SO(3) controller implementation is based on the geometric control framework proposed in:
+The SE(3) controller implementation is based on the geometric control framework proposed in:
 
 [“Geometric tracking control of a quadrotor UAV on SE(3)”](https://ieeexplore.ieee.org/document/5717652)
 
