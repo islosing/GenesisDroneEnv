@@ -1,7 +1,7 @@
 import torch
 import yaml
 import genesis as gs
-from genesis_drones.env.genesis_env import Genesis_env
+from genesis_drones.envs.genesis_env import Genesis_env
 from genesis_drones.tasks.track_task import Track_task
 from rsl_rl.runners import OnPolicyRunner
 

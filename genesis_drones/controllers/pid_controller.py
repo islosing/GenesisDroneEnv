@@ -5,7 +5,8 @@ import genesis as gs
 
 import math
 from genesis.utils.geom import quat_to_R
-from genesis_drones.flight.odom import ve2vb
+from genesis_drones.sensors.odom import ve2vb
+
 
 class PIDcontroller:
     def __init__(
@@ -23,7 +24,6 @@ class PIDcontroller:
         self.num_envs = num_envs
         self.odom = odom
         self.use_rc = use_rc
-        self.thrust_compensate = config.get("thrust_compensate", 0.5)  
         self.controller = controller
             
         if self.controller == "position":
@@ -77,7 +77,12 @@ class PIDcontroller:
         self.F_term_p = torch.zeros_like(self.P_term_p)                
         
         self.pid_freq = config.get("pid_exec_freq", 60)     # no use
+        self.dt = config.get("dt", 0.01)
         self.base_rpm = config.get("base_rpm", 14468.429183500699)
+        self.TWR = config.get("TWR", 3.3)
+        self.max_roll_rate=config.get("max_roll_rate", 10)   # degree/s
+        self.max_pitch_rate=config.get("max_pitch_rate", 10) # degree/s
+        self.max_yaw_rate=config.get("max_yaw_rate", 3)      # degree/s
         self.dT = 1 / self.pid_freq                         # no use
         self.tpa_factor = 1
         self.tpa_rate = 0
@@ -91,7 +96,6 @@ class PIDcontroller:
         self.body_set_point = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.pid_output = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.cur_setpoint_error = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
-        self.last_setpoint_error = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.drone = None
 
         self.cnt = 0
@@ -101,26 +105,22 @@ class PIDcontroller:
 
 
     def mixer(self, action=None) -> torch.Tensor:
-
         throttle_rc = torch.clamp((self.rc_command[3] + self.throttle_command) * 3, 0.0, 3.0) * self.base_rpm
         if action is None:
             throttle = throttle_rc
         else:
-            throttle_action = torch.clamp(action[:, -1] * 3 + self.thrust_compensate, min=0.0, max=3.0) * self.base_rpm
-            throttle = throttle_rc + throttle_action
-            throttle = throttle/(3* self.base_rpm)
-
-        # self.pid_output[:] = torch.clip(self.pid_output[:], -3.0, 3.0)
+            throttle_action = torch.clamp(action[:, -1], min=-1.0, max=1.0)
+            throttle = (throttle_action + 1) / 2
         motor_outputs = torch.stack([
            throttle - self.pid_output[:, 0] - self.pid_output[:, 1] - self.pid_output[:, 2],  # M1
            throttle - self.pid_output[:, 0] + self.pid_output[:, 1] + self.pid_output[:, 2],  # M2
            throttle + self.pid_output[:, 0] + self.pid_output[:, 1] - self.pid_output[:, 2],  # M3
            throttle + self.pid_output[:, 0] - self.pid_output[:, 1] + self.pid_output[:, 2],  # M4
         ], dim = 1)
-        print(motor_outputs)
-        motor_outputs = motor_outputs * self.base_rpm*3
-        return torch.clamp(motor_outputs, min=self.base_rpm * 0.6, max=self.base_rpm * 3.5)  # size: tensor(num_envs, 4)
-
+        motor_outputs = torch.clamp(motor_outputs, min = 0.0, max = 1.0)
+        motor_outputs = torch.sqrt(motor_outputs * self.TWR) * self.base_rpm   # convert to rpm command
+        return motor_outputs
+    
     def pid_update_TpaFactor(self):
         if (self.rc_command[3] > 0.35):       # 0.35 is the tpa_breakpoint, the same as Betaflight, 
             if (self.rc_command[3] < 1.0): 
@@ -151,7 +151,6 @@ class PIDcontroller:
                 return
         else:
             self.controller(action)
-            
         self.drone.set_propellels_rpm(self.mixer(action))
 
     def rate_controller(self, action=None): 
@@ -163,13 +162,12 @@ class PIDcontroller:
         if action is None:
             self.body_set_point[:] = self.rc_command[:3] * 15   # max 15 rad/s
         else:
-            self.body_set_point[:] = action[:, :3] * 10
-
-        self.last_setpoint_error[:] = self.cur_setpoint_error
+            coeffs = torch.tensor([self.max_roll_rate, self.max_pitch_rate, self.max_yaw_rate], device=self.device) # max rate in rad/s
+            self.body_set_point[:] = action[:, :3] * coeffs   # action is in rad/s, like [[roll, pitch, yaw, thrust]] if num_envs = 1  
         self.cur_setpoint_error[:] = self.body_set_point - self.odom.body_ang_vel
         self.P_term_r[:] = (self.cur_setpoint_error * self.kp_r) * self.tpa_factor
-        self.I_term_r[:] = torch.clamp(self.I_term_r + self.cur_setpoint_error * self.ki_r, -0.5, 0.5)
-        self.D_term_r[:] = (self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_r * self.tpa_factor    
+        self.I_term_r[:] = torch.clamp(self.I_term_r + self.cur_setpoint_error * self.ki_r * self.dt, -0.5, 0.5)
+        self.D_term_r[:] = (self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_r * self.tpa_factor / self.dt    
 
         self.pid_output[:] = (self.P_term_r + self.I_term_r + self.D_term_r)
         self.last_body_ang_vel[:] = self.odom.body_ang_vel
@@ -180,18 +178,14 @@ class PIDcontroller:
         :param: 
             action: torch.Size([num_envs, 4]), like [[roll, pitch, yaw, thrust]] if num_envs = 1
         """
-        yaw_mask = torch.tensor([1,1,0], device=self.device)
         if action is None:  # in RC mode
-            self.body_set_point[:] = -self.odom.body_euler * yaw_mask + self.rc_command[:3]  
+            self.body_set_point[:] = -self.odom.body_euler + self.rc_command[:3]  
         else:               # in RL mode
-            self.body_set_point[:] = -self.odom.body_euler * yaw_mask + action[:, :3]  # action is in rad, like [[roll, pitch, yaw, thrust]] if num_envs = 1
-            # print(action[:, :3])
-            # print(self.odom.body_euler)
-        self.last_setpoint_error[:] = self.cur_setpoint_error
+            self.body_set_point[:] = -self.odom.body_euler + action[:, :3]  # action is in rad, like [[roll, pitch, yaw, thrust]] if num_envs = 1
         self.cur_setpoint_error[:] = (self.body_set_point * 15 - self.odom.body_ang_vel)
         self.P_term_a[:] = (self.cur_setpoint_error[:] * self.kp_a) * self.tpa_factor
-        self.I_term_a[:] = torch.clamp(self.I_term_a + self.cur_setpoint_error[:] * self.ki_a, -0.5, 0.5)
-        self.D_term_a[:] = torch.clamp((self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_a * self.tpa_factor, -0.5, 0.5)    
+        self.I_term_a[:] = torch.clamp(self.I_term_a + self.cur_setpoint_error[:] * self.ki_a * self.dt, -0.5, 0.5)
+        self.D_term_a[:] = torch.clamp((self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_a * self.tpa_factor / self.dt, -0.5, 0.5)    
         
         self.pid_output[:] = (self.P_term_a + self.I_term_a + self.D_term_a)
         self.last_body_ang_vel[:] = self.odom.body_ang_vel
@@ -255,7 +249,6 @@ class PIDcontroller:
         
         # Reset the last angular velocity
         self.last_body_ang_vel.index_fill_(0, reset_range, 0.0)
-        self.last_setpoint_error.index_fill_(0, reset_range, 0.0)
         self.cur_setpoint_error.index_fill_(0, reset_range, 0.0)
         # Reset the TPA factor and rate
         self.tpa_factor = 1

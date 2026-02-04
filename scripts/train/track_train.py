@@ -3,7 +3,7 @@
 import shutil
 import os
 import yaml
-from genesis_drones.env.genesis_env import Genesis_env
+from genesis_drones.envs.genesis_env import Genesis_env
 from genesis_drones.tasks.track_task import Track_task
 from rsl_rl.runners import OnPolicyRunner
 import time

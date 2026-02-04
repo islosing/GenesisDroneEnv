@@ -1,17 +1,20 @@
 import torch
+import os
 import types
 import genesis as gs
 import numpy as np
-from genesis_drones.flight.pid import PIDcontroller
-from genesis_drones.flight.odom import Odom
+from genesis_drones.controllers import PIDcontroller
+from genesis_drones.sensors.odom import Odom
 
-from genesis_drones.flight.mavlink_sim import rc_command
+from genesis_drones.utils.mavlink_rc import rc_command
 from genesis.utils.geom import trans_quat_to_T, transform_quat_by_quat, transform_by_trans_quat
+
+ASSETS_PATH = os.path.join(os.path.dirname(__file__), "../robots/assets")
 
 def gs_rand_float(lower, upper, shape, device):
     return (upper - lower) * torch.rand(size=shape, device=device) + lower
 
-class Genesis_env :
+class Genesis_env:
     def __init__(
             self, 
             env_config, 
@@ -73,7 +76,7 @@ class Genesis_env :
 
         # add drone
         drone = gs.morphs.Drone(
-            file="assets/drone_urdf/drone.urdf", 
+            file=os.path.join(ASSETS_PATH, "drone_urdf/drone.urdf"),
             pos=self.env_config["drone_init_pos"], 
             euler=(0, 0, 0),
             default_armature=self.flight_config.get("motor_inertia", 2.6e-07)
@@ -151,7 +154,7 @@ class Genesis_env :
         if self.env_config["vis_waypoints"]:
             self.target = self.scene.add_entity(
                 morph=gs.morphs.Mesh(
-                    file="assets/simple/sphere.obj",
+                    file=os.path.join(ASSETS_PATH, "primitives/sphere.obj"),
                     scale=0.02,
                     fixed=False,
                     collision=False,
