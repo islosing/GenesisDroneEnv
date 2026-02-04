@@ -8,7 +8,6 @@ from genesis_drones.controllers import PIDcontroller
 from genesis_drones.sensors.odom import Odom
 from genesis_drones.utils.mavlink_rc import start_mavlink_receive_thread
 from genesis_drones.envs.genesis_env import Genesis_env
-from algorithms.rl.tasks.track_task import Track_task
 from rsl_rl.runners import OnPolicyRunner
 import time
 from datetime import datetime
