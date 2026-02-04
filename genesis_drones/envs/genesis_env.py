@@ -5,7 +5,7 @@ import numpy as np
 from genesis_drones.controllers import PIDcontroller
 from genesis_drones.sensors.odom import Odom
 
-from genesis_drones.flight.mavlink_sim import rc_command
+from genesis_drones.utils.mavlink_rc import rc_command
 from genesis.utils.geom import trans_quat_to_T, transform_quat_by_quat, transform_by_trans_quat
 
 def gs_rand_float(lower, upper, shape, device):

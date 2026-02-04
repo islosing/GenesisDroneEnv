@@ -6,7 +6,7 @@ import numpy as np
 from genesis_drones.envs.genesis_env import Genesis_env
 from genesis_drones.tasks.track_task import Track_task
 from genesis_drones.controllers import SE3Controller
-from genesis_drones.flight.flatness import compute_altitude
+from genesis_drones.utils.flatness import compute_altitude
 
 
 def circular_trajectory(t, R, omega, center, device=None, dtype=torch.float32):
