@@ -5,7 +5,7 @@ import genesis as gs
 
 import math
 from genesis.utils.geom import quat_to_R
-from genesis_drones.flight.odom import ve2vb
+from genesis_drones.sensors.odom import ve2vb
 
 
 class PIDcontroller:

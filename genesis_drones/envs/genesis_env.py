@@ -3,7 +3,7 @@ import types
 import genesis as gs
 import numpy as np
 from genesis_drones.controllers import PIDcontroller
-from genesis_drones.flight.odom import Odom
+from genesis_drones.sensors.odom import Odom
 
 from genesis_drones.flight.mavlink_sim import rc_command
 from genesis.utils.geom import trans_quat_to_T, transform_quat_by_quat, transform_by_trans_quat

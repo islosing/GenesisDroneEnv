@@ -5,7 +5,7 @@ import os
 import yaml
 import torch
 from genesis_drones.controllers import PIDcontroller
-from flight.odom import Odom
+from genesis_drones.sensors.odom import Odom
 from flight.mavlink_sim import rc_command
 from genesis_drones.envs.genesis_env import Genesis_env
 from flight.mavlink_sim import start_mavlink_receive_thread
