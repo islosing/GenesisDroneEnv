@@ -140,7 +140,7 @@ class SE3Controller(object):
         return torch.stack([-S[:, 1, 2], S[:, 0, 2], -S[:, 0, 1]], dim=1)
 
     @staticmethod
-    def quat_to_rot_matrix(q):
+    def _quat_to_rot_matrix(q):
         """
         q: (B, 4) [x, y, z, w] (Scipy convention input)
         """
@@ -241,7 +241,7 @@ class SE3Controller(object):
         )
 
         # R_des
-        R_des = self.quat_to_rot_matrix(q_scipy)
+        R_des = self._quat_to_rot_matrix(q_scipy)
 
         # ---- Omega Calculation ----
         sinp = torch.sin(yaw)
@@ -341,7 +341,7 @@ class SE3Controller(object):
         F_des = self.mass * target_acc  # (B, 3)
 
         # 2. Current Attitude
-        R = self.quat_to_rot_matrix(state["q"])  # (B, 3, 3)
+        R = self._quat_to_rot_matrix(state["q"])  # (B, 3, 3)
         b3 = R[:, :, 2]  # (B, 3)
 
         # 3. Thrust (u1)

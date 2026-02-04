@@ -232,7 +232,7 @@ def main():
                 "yaw": yaw.view(1, 1),
                 "yaw_dot": yaw_dot.view(1, 1),
             }
-            ctrl = controller.update(0, state, flat, None ,"wxyz")
+            ctrl = controller.update(0, state, flat, None, "wxyz")
             action = controller_action_convert(
                 control=ctrl,
                 flight_config=flight_config,

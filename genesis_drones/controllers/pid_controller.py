@@ -82,7 +82,7 @@ class PIDcontroller:
         self.TWR = config.get("TWR", 3.3)
         self.max_roll_rate=config.get("max_roll_rate", 10)   # degree/s
         self.max_pitch_rate=config.get("max_pitch_rate", 10) # degree/s
-        self.max_yaw_rate=config.get("max_yaw_rate", 7)      # degree/s
+        self.max_yaw_rate=config.get("max_yaw_rate", 3)      # degree/s
         self.dT = 1 / self.pid_freq                         # no use
         self.tpa_factor = 1
         self.tpa_rate = 0
@@ -166,8 +166,8 @@ class PIDcontroller:
             self.body_set_point[:] = action[:, :3] * coeffs   # action is in rad/s, like [[roll, pitch, yaw, thrust]] if num_envs = 1  
         self.cur_setpoint_error[:] = self.body_set_point - self.odom.body_ang_vel
         self.P_term_r[:] = (self.cur_setpoint_error * self.kp_r) * self.tpa_factor
-        self.I_term_r[:] = torch.clamp(self.I_term_r + self.cur_setpoint_error * self.ki_r*self.dt, -0.5, 0.5)
-        self.D_term_r[:] = (self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_r * self.tpa_factor/self.dt    
+        self.I_term_r[:] = torch.clamp(self.I_term_r + self.cur_setpoint_error * self.ki_r * self.dt, -0.5, 0.5)
+        self.D_term_r[:] = (self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_r * self.tpa_factor / self.dt    
 
         self.pid_output[:] = (self.P_term_r + self.I_term_r + self.D_term_r)
         self.last_body_ang_vel[:] = self.odom.body_ang_vel
@@ -184,8 +184,8 @@ class PIDcontroller:
             self.body_set_point[:] = -self.odom.body_euler + action[:, :3]  # action is in rad, like [[roll, pitch, yaw, thrust]] if num_envs = 1
         self.cur_setpoint_error[:] = (self.body_set_point * 15 - self.odom.body_ang_vel)
         self.P_term_a[:] = (self.cur_setpoint_error[:] * self.kp_a) * self.tpa_factor
-        self.I_term_a[:] = torch.clamp(self.I_term_a + self.cur_setpoint_error[:] * self.ki_a*self.dt, -0.5, 0.5)
-        self.D_term_a[:] = torch.clamp((self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_a * self.tpa_factor/self.dt, -0.5, 0.5)    
+        self.I_term_a[:] = torch.clamp(self.I_term_a + self.cur_setpoint_error[:] * self.ki_a * self.dt, -0.5, 0.5)
+        self.D_term_a[:] = torch.clamp((self.last_body_ang_vel - self.odom.body_ang_vel) * self.kd_a * self.tpa_factor / self.dt, -0.5, 0.5)    
         
         self.pid_output[:] = (self.P_term_a + self.I_term_a + self.D_term_a)
         self.last_body_ang_vel[:] = self.odom.body_ang_vel
