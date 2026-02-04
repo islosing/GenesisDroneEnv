@@ -118,13 +118,31 @@ def controller_action_convert(control, flight_config, env_config, device):
 
     elif env_config["controller"] == "angle":
         # -------- angle normalize --------
-        # cmd_q is already in Scipy [x,y,z,w] from TorchSE3Control
-        from scipy.spatial.transform import Rotation
-
-        # Rotation expects numpy on CPU
-        q_np = cmd_q.detach().cpu().numpy()
-        eulers_np = Rotation.from_quat(q_np).as_euler("xyz")
-        eulers = torch.as_tensor(eulers_np, device=device).float()  # (B, 3)
+        # cmd_q: (B, 4) in [x, y, z, w] Scipy format
+        
+        # 1. (x, y, z, w)
+        x, y, z, w = cmd_q.unbind(-1)
+        
+        # 2.  Euler Angles (Roll-Pitch-Yaw)
+        # Roll (x-axis rotation)
+        # atan2( 2(wx - yz), 1 - 2(x^2 + y^2) )
+        sin_roll = 2.0 * (w * x - y * z)
+        cos_roll = 1.0 - 2.0 * (x * x + y * y)
+        roll = torch.atan2(sin_roll, cos_roll)
+        
+        # Pitch (y-axis rotation)
+        # asin( 2(wy + xz) )
+        sin_pitch = 2.0 * (w * y + x * z)
+        sin_pitch = torch.clamp(sin_pitch, -1.0, 1.0)
+        pitch = torch.asin(sin_pitch)
+        
+        # Yaw (z-axis rotation)
+        # atan2( 2(wz - xy), 1 - 2(y^2 + z^2) )
+        sin_yaw = 2.0 * (w * z - x * y)
+        cos_yaw = 1.0 - 2.0 * (y * y + z * z)
+        yaw = torch.atan2(sin_yaw, cos_yaw)
+        
+        eulers = torch.stack([roll, pitch, yaw], dim=-1) # (B, 3)
 
         action = torch.cat([eulers, thrust_norm.view(-1, 1)], dim=1)  # (B, 4)
 

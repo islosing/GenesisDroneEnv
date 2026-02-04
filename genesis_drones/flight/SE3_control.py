@@ -347,7 +347,8 @@ class TorchSE3Control(object):
         R_des, w_des, q_des = self._batch_safe_hopf(
             target_acc, flat["x_dddot"], flat["yaw"], flat["yaw_dot"]
         )
-        # w_des = omega_cmd
+        if omega_cmd is not None:
+            w_des = omega_cmd
         # 5. Att Control
         # R_des^T * R - R^T * R_des
         R_des_T = R_des.transpose(1, 2)
