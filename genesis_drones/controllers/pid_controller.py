@@ -24,7 +24,6 @@ class PIDcontroller:
         self.num_envs = num_envs
         self.odom = odom
         self.use_rc = use_rc
-        self.thrust_compensate = config.get("thrust_compensate", 0.5)  
         self.controller = controller
             
         if self.controller == "position":
