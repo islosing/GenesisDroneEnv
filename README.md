@@ -24,7 +24,7 @@
 
 ## 🔖 Related Work (Our Work)
 
-1. [FLARE: Agile Flights for Quadrotor Cable-Suspended Payload Systems via Reinforcement Learning](https://arxiv.org/abs/2508.09797) (Accepted by **IEEE RA-L**)
+1. [FLARE: Agile Flights for Quadrotor Cable-Suspended Payload Systems via Reinforcement Learning](https://arxiv.org/abs/2508.09797) (Accepted by **IEEE RA-L**) ([Github Code](https://github.com/BEI11HAI/Flare))
 
 ### ✨ Features
 - **🚀 Reinforcement Learning**: Ready-to-use environments for training tracking policies (PPO included).
