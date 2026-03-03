@@ -84,10 +84,6 @@ class PIDcontroller:
         self.max_pitch_rate=config.get("max_pitch_rate", 10) # degree/s
         self.max_yaw_rate=config.get("max_yaw_rate", 3)      # degree/s
         self.dT = 1 / self.pid_freq                         # no use
-        self.TWR = config.get("TWR", 3.3)
-        self.max_roll_rate=config.get("max_roll_rate", 10)   # degree/s
-        self.max_pitch_rate=config.get("max_pitch_rate", 10) # degree/s
-        self.max_yaw_rate=config.get("max_yaw_rate", 7)      # degree/s
         self.tpa_factor = 1
         self.tpa_rate = 0
         self.throttle_command = torch.zeros((self.num_envs, ), device=self.device, dtype=gs.tc_float)
@@ -284,4 +280,3 @@ def random_quaternion(num_envs=1, device="cuda"):
     quat = torch.cat([w, x, y, z], dim=1)
     quat = quat / quat.norm(dim=1, keepdim=True)
     return quat
-

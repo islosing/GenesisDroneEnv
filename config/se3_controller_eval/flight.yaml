@@ -1,19 +1,19 @@
 
 # =========== pid_param =============
 ang:
-  kp_r: 0.04
-  ki_r: 0.004
-  kd_r: 0.0001
+  kp_r: 0.03
+  ki_r: 0.0013
+  kd_r: 0.000
   kf_r: 0.0
 
-  kp_p: 0.04
-  ki_p: 0.004
-  kd_p: 0.0001
+  kp_p: 0.03
+  ki_p: 0.0013
+  kd_p: 0.000
   kf_p: 0.0
 
-  kp_y: 0.04                                          
-  ki_y: 0.004
-  kd_y: 0.0001
+  kp_y: 0.03                                          
+  ki_y: 0.0013
+  kd_y: 0.0
   kf_y: 0.0
 
 rat:
@@ -135,7 +135,7 @@ se3_control:
     omega_xy_limit: 10
 
   gains:
-    kp_pos: [16, 16, 16]
-    kd_pos: [5, 5, 7]
-    kp_att: 20.44
-    kd_att: 0.1
+    kp_pos: [6, 6, 10.5]
+    kd_pos: [1.0, 1.0, 1.0]
+    kp_att: 25.44
+    kd_att: 0.8
