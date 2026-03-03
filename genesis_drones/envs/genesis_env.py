@@ -1,29 +1,30 @@
 import torch
+import os
 import types
 import genesis as gs
 import numpy as np
-from genesis_drones.flight.pid import PIDcontroller
-from genesis_drones.flight.odom import Odom
+from genesis_drones.controllers import PIDcontroller
+from genesis_drones.sensors.odom import Odom
 
-from genesis_drones.flight.mavlink_sim import rc_command
+from genesis_drones.utils.mavlink_rc import rc_command
 from genesis.utils.geom import trans_quat_to_T, transform_quat_by_quat, transform_by_trans_quat
+
+ASSETS_PATH = os.path.join(os.path.dirname(__file__), "../robots/assets")
 
 def gs_rand_float(lower, upper, shape, device):
     return (upper - lower) * torch.rand(size=shape, device=device) + lower
 
-class Genesis_env :
+class Genesis_env:
     def __init__(
             self, 
             env_config, 
             flight_config,
             num_envs=None,
-            override_init_pos=None,
         ):
         
         # configs
         self.env_config = env_config
         self.flight_config = flight_config
-        self.override_init_pos = override_init_pos
 
         # bool switches
         self.render_cam = self.env_config["render_cam"]
@@ -48,9 +49,9 @@ class Genesis_env :
             sim_options = gs.options.SimOptions(dt = self.dt, substeps = 1),
             viewer_options = gs.options.ViewerOptions(
                 max_FPS = self.env_config.get("max_vis_FPS", 15),
-                camera_pos = (2.0, 0.0, 6.0),
-                camera_lookat = (2.0, 0.0, 1.0),
-                camera_fov = 50,
+                camera_pos = (-3.0, 0.0, 3.0),
+                camera_lookat = (0.0, 0.0, 1.0),
+                camera_fov = 40,
             ),
             vis_options = gs.options.VisOptions(
                 show_world_frame = False,
@@ -74,11 +75,10 @@ class Genesis_env :
         self.plane = self.scene.add_entity(gs.morphs.Plane())
 
         # add drone
-        init_pos = override_init_pos if override_init_pos is not None else self.env_config["drone_init_pos"]
         drone = gs.morphs.Drone(
-            file="assets/drone_urdf/drone.urdf", 
-            pos=init_pos, 
-            euler=(0, 0, 90),
+            file=os.path.join(ASSETS_PATH, "drone_urdf/drone.urdf"),
+            pos=self.env_config["drone_init_pos"], 
+            euler=(90, 0, 0),
             default_armature=self.flight_config.get("motor_inertia", 2.6e-07)
         )
         self.drone = self.scene.add_entity(drone)
@@ -130,7 +130,7 @@ class Genesis_env :
         if (self.env_config.get("use_FPV_camera", False)):
             cam = self.scene.add_camera(
                 res=tuple(self.env_config["cam_res"]),
-                pos=(-2.5, 0.0, 3),
+                pos=(-3.5, 0.0, 2.5),
                 lookat=(0, 0, 0.5),
                 fov=58,
                 GUI=self.env_config["show_cam_GUI"],
@@ -152,32 +152,21 @@ class Genesis_env :
 
     def set_target_phere_for_vis(self):
         if self.env_config["vis_waypoints"]:
-            self.targets = []
-            waypoints = [
-                [0.0, -1.5, 1.0], 
-                [0.0, 0.0, 1.0], 
-                [2.0, 0.0, 1.0], 
-                [4.0, 0.0, 1.0]
-            ]
-            for point in waypoints:
-                target = self.scene.add_entity(
-                    morph=gs.morphs.Mesh(
-                        file="assets/simple/sphere.obj",
-                        scale=0.02,
-                        fixed=True,
-                        collision=False,
-                        pos=point,
+            self.target = self.scene.add_entity(
+                morph=gs.morphs.Mesh(
+                    file=os.path.join(ASSETS_PATH, "primitives/sphere.obj"),
+                    scale=0.02,
+                    fixed=False,
+                    collision=False,
+                ),
+                surface=gs.surfaces.Rough(
+                    diffuse_texture=gs.textures.ColorTexture(
+                        color=(1.0, 0.5, 0.5),
                     ),
-                    surface=gs.surfaces.Rough(
-                        diffuse_texture=gs.textures.ColorTexture(
-                            color=(1.0, 0.5, 0.5),
-                        ),
-                    ),
-                )
-                self.targets.append(target)
-        
-        # Set self.target to None to avoid affecting tracking logic
-        self.target = None
+                ),
+            )
+        else:
+            self.target = None
 
     def set_ros(self):
         if self.use_ros is True:
@@ -234,18 +223,15 @@ class Genesis_env :
         else:
             reset_range = env_idx    
         init_pos = torch.zeros((self.num_envs, 3), device=self.device)
-        init_quat = torch.tensor([-0.70710678, 0.0, 0.0, -0.70710678], device=self.device, dtype=gs.tc_float).unsqueeze(0).repeat(reset_range.shape[-1], 1)
-        if self.override_init_pos is not None:
-            init_pos_tensor = torch.tensor(self.override_init_pos, device=self.device, dtype=gs.tc_float)
-            init_pos = init_pos_tensor.expand_as(init_pos)
-        elif self.env_config.get("fixed_init_pos", False):
+        init_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device, dtype=gs.tc_float).unsqueeze(0).repeat(reset_range.shape[-1], 1)
+        if self.env_config.get("fixed_init_pos", False):
             init_pos[:, 0] = self.env_config["drone_init_pos"][0]
             init_pos[:, 1] = self.env_config["drone_init_pos"][1]
             init_pos[:, 2] = self.env_config["drone_init_pos"][2]
         else:
-            init_pos[:, 0] = gs_rand_float(*self.env_config["init_x_range"], (len(reset_range),), self.device)
-            init_pos[:, 1] = gs_rand_float(*self.env_config["init_y_range"], (len(reset_range),), self.device)
-            init_pos[:, 2] = gs_rand_float(*self.env_config["init_z_range"], (len(reset_range),), self.device)
+            init_pos[:, 0] = gs_rand_float(*self.env_config["init_x_range"], (self.num_envs,), self.device)
+            init_pos[:, 1] = gs_rand_float(*self.env_config["init_y_range"], (self.num_envs,), self.device)
+            init_pos[:, 2] = gs_rand_float(*self.env_config["init_z_range"], (self.num_envs,), self.device)
             init_quat = random_quat(reset_range)
 
         self.drone.set_pos(init_pos[reset_range], envs_idx=reset_range, zero_velocity=True)

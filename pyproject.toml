@@ -5,6 +5,7 @@ description = "Genesis Drone Environment"
 authors = [
     "Xian Wang <xianwang@zju.edu.cn>",
     "Yifei Nie <nyf@zju.edu.cn>",
+    "Junjie Wang <22532069@zju.edu.cn>"
 ]
 license = "MIT"
 readme = "README.md"
