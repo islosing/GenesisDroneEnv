@@ -110,7 +110,7 @@ class Odom:
         self.body_linear_vel.index_fill_(0, reset_range, 0.0)
         self.body_linear_acc.index_fill_(0, reset_range, 0.0)
         self.body_ang_vel.index_fill_(0, reset_range, 0.0)
-        identity_quat = torch.tensor([sqrt(2) / 2, 0.0, 0.0, sqrt(2) / 2], device=self.device, dtype=gs.tc_float)
+        identity_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device, dtype=gs.tc_float)
         self.body_quat[reset_range] = rand_quat
         self.body_quat_inv[reset_range] = inv_quat(rand_quat)
         self.body_euler[:] = quat_to_xyz(self.body_quat, rpy=True)

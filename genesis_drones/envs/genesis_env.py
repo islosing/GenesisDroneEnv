@@ -81,7 +81,7 @@ class Genesis_env:
         drone = gs.morphs.Drone(
             file=os.path.join(ASSETS_PATH, "drone_urdf/drone.urdf"),
             pos=init_pos, 
-            euler=(90, 0, 0),
+            euler=(0, 0, 0),
             default_armature=self.flight_config.get("motor_inertia", 2.6e-07)
         )
         self.drone = self.scene.add_entity(drone)
@@ -226,7 +226,7 @@ class Genesis_env:
         else:
             reset_range = env_idx    
         init_pos = torch.zeros((self.num_envs, 3), device=self.device)
-        init_quat = torch.tensor([-0.70710678, 0.0, 0.0, -0.70710678], device=self.device, dtype=gs.tc_float).unsqueeze(0).repeat(reset_range.shape[-1], 1)
+        init_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device, dtype=gs.tc_float).unsqueeze(0).repeat(reset_range.shape[-1], 1)
         if self.override_init_pos is not None:
             init_pos_tensor = torch.tensor(self.override_init_pos, device=self.device, dtype=gs.tc_float)
             init_pos = init_pos_tensor.expand_as(init_pos)
@@ -235,9 +235,9 @@ class Genesis_env:
             init_pos[:, 1] = self.env_config["drone_init_pos"][1]
             init_pos[:, 2] = self.env_config["drone_init_pos"][2]
         else:
-            init_pos[:, 0] = gs_rand_float(*self.env_config["init_x_range"], (len(reset_range),), self.device)
-            init_pos[:, 1] = gs_rand_float(*self.env_config["init_y_range"], (len(reset_range),), self.device)
-            init_pos[:, 2] = gs_rand_float(*self.env_config["init_z_range"], (len(reset_range),), self.device)
+            init_pos[:, 0] = gs_rand_float(*self.env_config["init_x_range"], (self.num_envs,), self.device)
+            init_pos[:, 1] = gs_rand_float(*self.env_config["init_y_range"], (self.num_envs,), self.device)
+            init_pos[:, 2] = gs_rand_float(*self.env_config["init_z_range"], (self.num_envs,), self.device)
             init_quat = random_quat(reset_range)
 
         self.drone.set_pos(init_pos[reset_range], envs_idx=reset_range, zero_velocity=True)
