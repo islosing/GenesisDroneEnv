@@ -317,20 +317,26 @@ class SE3Controller(object):
     # ============================================================
     #                       MAIN UPDATE
     # ============================================================
-    def update(self, t, state, flat, omega_cmd=None, quat_format="wxyz"):
+    def update(self, t, state, flat, omega_cmd=None, rot_format="wxyz"):
         """
         Inputs should be Tensors on GPU.
-        state: {'x': (B,3), 'v': (B,3), 'q': (B,4), 'w': (B,3)}
+        state: {'x': (B,3), 'v': (B,3), 'q': (B,4), 'w': (B,3), 'R': (B,3,3), ...}
         flat:  {'x': (B,3), ... 'yaw': (B,1)}
+        rot_format: "wxyz" | "xyzw" | "rotmat"
         """
-        q_input = state["q"] # 期望形状 (B, 4)
         
-        if quat_format.lower() == "wxyz":
-            state["q"] = torch.cat([q_input[:, 1:], q_input[:, 0:1]], dim=1)
-        elif quat_format.lower() == "xyzw":
-            state["q"] = q_input
+        if rot_format.lower() == "rotmat":
+            R = state["R"]
+        elif rot_format.lower() == "wxyz":
+            q = state["q"]
+            q_xyzw = torch.cat([q[:, 1:], q[:, 0:1]], dim=1)
+            R = self._quat_to_rot_matrix(q_xyzw)
+        elif rot_format.lower() == "xyzw":
+            q = state["q"]
+            R = self._quat_to_rot_matrix(q)
         else:
-            raise ValueError(f"Unknown quat_format: {quat_format}")
+            raise ValueError(f"Unknown rot_format: {rot_format}")
+        
         # 1. Desired Force
         pos_err = state["x"] - flat["x"]
         vel_err = state["v"] - flat["x_dot"]
@@ -341,7 +347,6 @@ class SE3Controller(object):
         F_des = self.mass * target_acc  # (B, 3)
 
         # 2. Current Attitude
-        R = self._quat_to_rot_matrix(state["q"])  # (B, 3, 3)
         b3 = R[:, :, 2]  # (B, 3)
 
         # 3. Thrust (u1)
