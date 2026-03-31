@@ -61,13 +61,13 @@ class SE3Controller(object):
         self.nominal_kd_pos = torch.tensor(cfg["gains"]["kd_pos"], device=self.device)
         self.nominal_kp_att = torch.tensor(cfg["gains"]["kp_att"], device=self.device)
         self.nominal_kd_att = torch.tensor(cfg["gains"]["kd_att"], device=self.device)
-        # self.kp_vel = 0.1 * self.kp_pos
         self.mass = torch.tensor([self.nominal_mass], device=self.device)
         self.inertia = self.nominal_inertia.unsqueeze(0)  # (1, 3, 3)
         self.kp_pos = self.nominal_kp_pos.unsqueeze(0)  # (1, 3)
         self.kd_pos = self.nominal_kd_pos.unsqueeze(0)
         self.kp_att = self.nominal_kp_att.unsqueeze(0)
         self.kd_att = self.nominal_kd_att.unsqueeze(0)
+        self.kp_vel = 0.1 * self.kp_pos
         # =====================
         # Allocation
         # =====================
