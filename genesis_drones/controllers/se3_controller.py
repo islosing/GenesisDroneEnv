@@ -358,6 +358,9 @@ class SE3Controller(object):
         )
         if omega_cmd is not None:
             w_des = omega_cmd
+        w_des[:2] = torch.clamp(w_des[:2], -self.omega_xy_limit, self.omega_xy_limit)
+        w_des[2] = torch.clamp(w_des[2], -self.omega_z_limit, self.omega_z_limit)
+
         # 5. Att Control
         # R_des^T * R - R^T * R_des
         R_des_T = R_des.transpose(1, 2)
