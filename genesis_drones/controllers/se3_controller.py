@@ -210,6 +210,8 @@ class SE3Controller(object):
         a_dot = a_dot * flip_sign
         b_dot = b_dot * flip_sign
         c_dot = c_dot * flip_sign
+        yaw = yaw * flip_sign
+        yaw_dot = yaw_dot * flip_sign
 
         # ---- Hopf Quaternion q_abc [w, x, y, z] ----
         one_plus_c = torch.clamp(1.0 + c, min=eps)
@@ -252,10 +254,7 @@ class SE3Controller(object):
         omega1 = sinp * a_dot - cosp * b_dot - (a * sinp - b * cosp) * omg_term
         omega2 = cosp * a_dot + sinp * b_dot - (a * cosp + b * sinp) * omg_term
         omega3 = (b * a_dot - a * b_dot) / one_plus_c + yaw_dot.view(-1)
-
-        omega3 = torch.clamp(omega3, -self.omega_z_limit, self.omega_z_limit)
         w_des = torch.stack([omega1, omega2, omega3], dim=1)
-        w_des = torch.clamp(w_des, -self.omega_xy_limit, self.omega_xy_limit)
 
         # ---- Flip Back Logic ----
         # R_des columns 0 and 2, w_des x and z need flipping if mask was true
@@ -264,11 +263,11 @@ class SE3Controller(object):
         # Create a flip matrix or just operate on slices (torch slices are views, careful)
         # R_des is (B, 3, 3). We want to multiply col 0 and 2 by f_sign
         R_des = R_des.clone()  # Avoid in-place modification errors in gradients
-        R_des[:, :, 0] = R_des[:, :, 0] * f_sign.view(-1, 1)
+        R_des[:, :, 1] = R_des[:, :, 1] * f_sign.view(-1, 1)
         R_des[:, :, 2] = R_des[:, :, 2] * f_sign.view(-1, 1)
 
         w_des = w_des.clone()
-        w_des[:, 0] = w_des[:, 0] * flip_sign
+        w_des[:, 1] = w_des[:, 1] * flip_sign
         w_des[:, 2] = w_des[:, 2] * flip_sign
 
         return R_des, w_des, q_scipy
@@ -357,9 +356,9 @@ class SE3Controller(object):
             target_acc, flat["x_dddot"], flat["yaw"], flat["yaw_dot"]
         )
         if omega_cmd is not None:
-            w_des = omega_cmd
-        w_des[:2] = torch.clamp(w_des[:2], -self.omega_xy_limit, self.omega_xy_limit)
-        w_des[2] = torch.clamp(w_des[2], -self.omega_z_limit, self.omega_z_limit)
+            w_des = omega_cmd.reshape_as(w_des)
+        w_des[:, :2] = torch.clamp(w_des[:, :2], -self.omega_xy_limit, self.omega_xy_limit)
+        w_des[:, 2] = torch.clamp(w_des[:, 2], -self.omega_z_limit, self.omega_z_limit)
 
         # 5. Att Control
         # R_des^T * R - R^T * R_des
